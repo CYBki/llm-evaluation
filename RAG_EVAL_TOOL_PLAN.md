@@ -43,7 +43,7 @@ Kullanicilar kendi RAG sistemlerine 2 satir SDK ekleyerek her soru-cevap etkiles
 
 Kullanici herhangi bir dataset yuklemez. Gercek kullanimdaki her soru-cevap cifti SDK araciligiyla otomatik olarak yakalanir ve iki asamali (two-stage) LLM-as-Judge yontemiyle puanlanir.
 
-Degerlendirme Mimarisi: Chain-of-Thought prompting ile ilk LLM serbest metin muhakeme uretir, ikinci LLM (veya ayni modelin ikinci cagrisi) bu muhakemeyi yapilandirilmis JSON skorlara donusturur. Bu sayede daha derin analiz, aciklanabilir puanlama ve claim bazli dogrulama saglanir.
+Degerlendirme Mimarisi: Rubric-based Chain-of-Thought prompting ile Stage 1 (gpt-4o-mini) her metrik icin puanlama cetvelini (rubric) kullanarak serbest metin muhakeme uretir, Stage 2 (gpt-3.5-turbo) bu muhakemeyi yapilandirilmis JSON skorlara donusturur. Bu sayede daha tutarli puanlama, derin analiz, aciklanabilir sonuclar ve claim bazli dogrulama saglanir.
 
 ---
 
@@ -54,7 +54,7 @@ Degerlendirme Mimarisi: Chain-of-Thought prompting ile ilk LLM serbest metin muh
 | Backend | FastAPI (Python 3.11+) |
 | Veritabani | PostgreSQL 15, SQLAlchemy 2.0, Alembic |
 | Validation | Pydantic v2 |
-| LLM | OpenAI gpt-4o-mini (LLM-as-Judge) |
+| LLM | OpenAI gpt-4o-mini (Stage 1 Rubric-based CoT) + gpt-3.5-turbo (Stage 2 JSON) |
 | Embeddings | sentence-transformers (Sprint 2) |
 | Async Queue | Redis + Celery (Sprint 2) |
 | Frontend | Next.js 14, Tailwind CSS, shadcn/ui, Recharts (Sprint 4) |
@@ -116,16 +116,16 @@ Gun 3 - Carsamba - LLM Client ve Two-Stage Evaluation Engine
 | Gorev |
 |---|
 | llm_client.py: OpenAI async wrapper, retry, hata yonetimi |
-| Stage 1 prompt: Chain-of-Thought ile serbest metin muhakeme ureten prompt |
-| Stage 2 prompt: Muhakeme metnini 8 metrik + reasoning + disagreement_claims JSON a donusturen prompt |
+| Stage 1 prompt: Rubric-based CoT ile her metrik icin puanlama cetvelini kullanarak serbest metin muhakeme ureten prompt (gpt-4o-mini) |
+| Stage 2 prompt: Muhakeme metnini 8 metrik + reasoning + disagreement_claims JSON a donusturen prompt (gpt-3.5-turbo) |
 | evaluator.py: evaluate_trace() fonksiyonu (iki asamali cagri) |
 | Ingest sonrasi otomatik evaluation, sonucu (skorlar + reasoning) DB ye kaydet |
 | GET /api/v1/traces/{id} evaluation sonucu + reasoning_summary ile birlikte donsun |
 
 Two-Stage Evaluation Akisi:
 ```
-Asama 1: Question + Context + Answer → gpt-4o-mini → Serbest metin muhakeme
-Asama 2: Muhakeme metni → gpt-4o-mini → Yapilandirilmis JSON (skorlar + reasoning + claims)
+Asama 1: Question + Context + Answer + Rubric → gpt-4o-mini → Rubric-based serbest metin muhakeme
+Asama 2: Muhakeme metni → gpt-3.5-turbo → Yapilandirilmis JSON (skorlar + reasoning + claims)
 ```
 
 Beklenen cikti: Trace gonder, LLM iki asamada puanlasin, 8 metrik skoru + aciklama donsun.
@@ -155,7 +155,7 @@ Beklenen cikti: Sprint 1 tamamlandi, demo hazir.
 
 ### 4.2 Metrikler
 
-Iki asamali LLM cagrisiyla tum metrikler puanlanir. Stage 1 serbest metin muhakeme uretir, Stage 2 yapilandirilmis JSON'a donusturur.
+Iki asamali Rubric-based CoT ile tum metrikler puanlanir. Stage 1 (gpt-4o-mini) her metrik icin puanlama cetvelini (rubric) kullanarak serbest metin muhakeme uretir, Stage 2 (gpt-3.5-turbo) bu muhakemeyi yapilandirilmis JSON'a donusturur.
 
 | No | Metrik | Tip | Aciklama |
 |---|---|---|---|
@@ -186,7 +186,7 @@ Ek Alanlar (Two-Stage ciktisi):
 - [ ] POST /api/v1/ingest/batch (toplu trace)
 - [ ] GET /api/v1/traces (pagination)
 - [ ] GET /api/v1/traces/{id} (detay + evaluation)
-- [ ] Two-Stage LLM-as-Judge evaluator (Stage 1: CoT reasoning, Stage 2: JSON skorlama)
+- [ ] Two-Stage LLM-as-Judge evaluator (Stage 1: gpt-4o-mini Rubric-based CoT, Stage 2: gpt-3.5-turbo JSON skorlama)
 - [ ] reasoning_summary ve disagreement_claims ciktisi
 - [ ] Unit ve Integration testler
 - [ ] Swagger/OpenAPI dokumantasyonu
@@ -608,7 +608,7 @@ Query parametreleri:
 
 ### Sprint 1 - Temel Metrikler (Two-Stage LLM-as-Judge)
 
-Stage 1 (CoT Reasoning) serbest metin muhakeme uretir, Stage 2 yapilandirilmis JSON'a donusturur.
+Stage 1 (gpt-4o-mini, Rubric-based CoT) puanlama cetvelini kullanarak serbest metin muhakeme uretir, Stage 2 (gpt-3.5-turbo) yapilandirilmis JSON'a donusturur.
 
 | No | Metrik | Tip | Kaynak | Aciklama |
 |---|---|---|---|---|
@@ -685,7 +685,7 @@ Puanlama notu: Tum 0.0-1.0 metriklerinde 1.0 en iyi, 0.0 en kotu skordur. Halluc
 | citation_check | FLOAT | NULLABLE | Citation dogrulama (Sprint 2) |
 | reasoning_summary | TEXT | NULLABLE | Puanlamanin tek cumlelik gerekce ozeti |
 | disagreement_claims | JSON | NULLABLE | Context-cevap uyumsuzluk analizi (claim bazli) |
-| stage_1_reasoning | TEXT | NULLABLE | Stage 1 serbest metin muhakeme (ham CoT ciktisi) |
+| stage_1_reasoning | TEXT | NULLABLE | Stage 1 Rubric-based CoT muhakeme (ham cikti) |
 | raw_response | JSON | NULLABLE | Stage 2 LLM ham JSON yaniti |
 | evaluated_at | TIMESTAMP | DEFAULT now() | Degerlendirme tarihi |
 | model_used | VARCHAR(50) | NULLABLE | Kullanilan LLM modeli |
@@ -768,7 +768,7 @@ llm-evaluation/
 │   │   ├── __init__.py
 │   │   ├── evaluator.py             # evaluate_trace() ana fonksiyon (two-stage)
 │   │   ├── llm_client.py            # OpenAI async wrapper, retry
-│   │   ├── prompts.py               # Stage 1 (CoT) ve Stage 2 (JSON) prompt sablonlari
+│   │   ├── prompts.py               # Stage 1 (Rubric-based CoT) ve Stage 2 (JSON) prompt sablonlari
 │   │   └── metrics.py               # Metrik hesaplama yardimcilari
 │   │
 │   ├── middleware/                    # Middleware katmani
@@ -813,26 +813,28 @@ llm-evaluation/
 
 ## 12. Maliyet Analizi
 
-### OpenAI API Maliyeti (gpt-4o-mini)
+### OpenAI API Maliyeti (gpt-4o-mini + gpt-3.5-turbo)
 
-| Kalem | Birim Fiyat | Aciklama |
-|---|---|---|
-| Input tokens | $0.15 / 1M token | Prompt + soru + cevap + context |
-| Output tokens | $0.60 / 1M token | JSON evaluation sonucu |
+| Model | Kalem | Birim Fiyat | Aciklama |
+|---|---|---|---|
+| gpt-4o-mini | Input tokens | $0.15 / 1M token | Stage 1: Rubric + soru + cevap + context |
+| gpt-4o-mini | Output tokens | $0.60 / 1M token | Stage 1: Rubric-based muhakeme |
+| gpt-3.5-turbo | Input tokens | $0.50 / 1M token | Stage 2: Muhakeme metni |
+| gpt-3.5-turbo | Output tokens | $1.50 / 1M token | Stage 2: JSON skorlama |
 
-Iki asamali (two-stage) degerlendirme:
-- Stage 1 Input: ~800 token (CoT prompt + soru + cevap + context)
-- Stage 1 Output: ~400 token (serbest metin muhakeme)
-- Stage 2 Input: ~600 token (Stage 2 prompt + muhakeme metni)
-- Stage 2 Output: ~300 token (yapilandirilmis JSON + reasoning + claims)
-- Toplam maliyet/trace: ~$0.00042
+Iki asamali Rubric-based CoT degerlendirme:
+- Stage 1 Input: ~900 token (rubric + soru + cevap + context) — gpt-4o-mini
+- Stage 1 Output: ~400 token (rubric-based muhakeme) — gpt-4o-mini
+- Stage 2 Input: ~600 token (muhakeme metni) — gpt-3.5-turbo
+- Stage 2 Output: ~300 token (yapilandirilmis JSON + reasoning + claims) — gpt-3.5-turbo
+- Toplam maliyet/trace: ~$0.00035
 
 | Aylik Hacim | Trace/Ay | Tahmini Maliyet |
 |---|---|---|
-| Dusuk | 1,000 | ~$0.42 |
-| Orta | 10,000 | ~$4.20 |
-| Yuksek | 100,000 | ~$42.00 |
-| Cok Yuksek | 1,000,000 | ~$420.00 |
+| Dusuk | 1,000 | ~$0.35 |
+| Orta | 10,000 | ~$3.50 |
+| Yuksek | 100,000 | ~$35.00 |
+| Cok Yuksek | 1,000,000 | ~$350.00 |
 
 ### Sprint 2 Ek Maliyetler
 
@@ -869,7 +871,7 @@ Faithfulness ve Hallucination icin ek LLM cagrisi:
 - [ ] POST /api/v1/ingest ile tek trace gonderilebiliyor
 - [ ] POST /api/v1/ingest/batch ile toplu trace gonderilebiliyor
 - [ ] Trace gonderildikten sonra two-stage evaluation ile 8 metrik senkron olarak puanlaniyor
-- [ ] Stage 1 serbest metin muhakeme + Stage 2 yapilandirilmis JSON akisi calisiyor
+- [ ] Stage 1 (gpt-4o-mini) Rubric-based CoT muhakeme + Stage 2 (gpt-3.5-turbo) yapilandirilmis JSON akisi calisiyor
 - [ ] reasoning_summary ve disagreement_claims evaluation sonucunda donuyor
 - [ ] GET /api/v1/traces ile pagination calisarak trace listesi donuyor
 - [ ] GET /api/v1/traces/{id} ile evaluation sonucu + reasoning dahil trace detayi donuyor
