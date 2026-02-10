@@ -41,7 +41,9 @@ Toplam Sure: 4 Hafta / 4 Sprint
 
 Kullanicilar kendi RAG sistemlerine 2 satir SDK ekleyerek her soru-cevap etkilesiminin kalitesini otomatik olarak olcen bir SaaS evaluation platformu.
 
-Kullanici herhangi bir dataset yuklemez. Gercek kullanimdaki her soru-cevap cifti SDK araciligiyla otomatik olarak yakalanir ve LLM-as-Judge yontemiyle puanlanir.
+Kullanici herhangi bir dataset yuklemez. Gercek kullanimdaki her soru-cevap cifti SDK araciligiyla otomatik olarak yakalanir ve iki asamali (two-stage) LLM-as-Judge yontemiyle puanlanir.
+
+Degerlendirme Mimarisi: Chain-of-Thought prompting ile ilk LLM serbest metin muhakeme uretir, ikinci LLM (veya ayni modelin ikinci cagrisi) bu muhakemeyi yapilandirilmis JSON skorlara donusturur. Bu sayede daha derin analiz, aciklanabilir puanlama ve claim bazli dogrulama saglanir.
 
 ---
 
@@ -109,17 +111,24 @@ Gun 2 - Sali - Auth ve Ingest API
 
 Beklenen cikti: Kayit ol, API key al, trace gonder, listele.
 
-Gun 3 - Carsamba - LLM Client ve Evaluation Engine
+Gun 3 - Carsamba - LLM Client ve Two-Stage Evaluation Engine
 
 | Gorev |
 |---|
 | llm_client.py: OpenAI async wrapper, retry, hata yonetimi |
-| Evaluation prompt: 8 metrigi tek seferde puanlayan JSON prompt |
-| evaluator.py: evaluate_trace() fonksiyonu |
-| Ingest sonrasi otomatik evaluation, sonucu DB ye kaydet |
-| GET /api/v1/traces/{id} evaluation sonucuyla birlikte donsun |
+| Stage 1 prompt: Chain-of-Thought ile serbest metin muhakeme ureten prompt |
+| Stage 2 prompt: Muhakeme metnini 8 metrik + reasoning + disagreement_claims JSON a donusturen prompt |
+| evaluator.py: evaluate_trace() fonksiyonu (iki asamali cagri) |
+| Ingest sonrasi otomatik evaluation, sonucu (skorlar + reasoning) DB ye kaydet |
+| GET /api/v1/traces/{id} evaluation sonucu + reasoning_summary ile birlikte donsun |
 
-Beklenen cikti: Trace gonder, LLM puanlasin, 8 metrik skoru donsun.
+Two-Stage Evaluation Akisi:
+```
+Asama 1: Question + Context + Answer → gpt-4o-mini → Serbest metin muhakeme
+Asama 2: Muhakeme metni → gpt-4o-mini → Yapilandirilmis JSON (skorlar + reasoning + claims)
+```
+
+Beklenen cikti: Trace gonder, LLM iki asamada puanlasin, 8 metrik skoru + aciklama donsun.
 
 Gun 4 - Persembe - Test ve Hata Yonetimi
 
@@ -146,7 +155,7 @@ Beklenen cikti: Sprint 1 tamamlandi, demo hazir.
 
 ### 4.2 Metrikler
 
-Tek bir LLM cagrisiyla tum metrikler puanlanir.
+Iki asamali LLM cagrisiyla tum metrikler puanlanir. Stage 1 serbest metin muhakeme uretir, Stage 2 yapilandirilmis JSON'a donusturur.
 
 | No | Metrik | Tip | Aciklama |
 |---|---|---|---|
@@ -159,6 +168,14 @@ Tek bir LLM cagrisiyla tum metrikler puanlanir.
 | 7 | is_deflection | bool | Sistem soruyu savusturuyor mu |
 | 8 | overall_score | 0.0 - 1.0 | Genel kalite puani |
 
+Ek Alanlar (Two-Stage ciktisi):
+
+| Alan | Tip | Aciklama |
+|---|---|---|
+| reasoning_summary | string | Puanlamanin tek cumlelik gerekce ozeti |
+| disagreement_claims | JSON array | Context-cevap uyumsuzluk analizi (claim bazli) |
+| stage_1_reasoning | text | Stage 1 serbest metin muhakeme (ham cikti) |
+
 ### 4.3 Teslim Edilecekler
 
 - [ ] FastAPI projesi + Docker Compose (API + PostgreSQL)
@@ -169,7 +186,8 @@ Tek bir LLM cagrisiyla tum metrikler puanlanir.
 - [ ] POST /api/v1/ingest/batch (toplu trace)
 - [ ] GET /api/v1/traces (pagination)
 - [ ] GET /api/v1/traces/{id} (detay + evaluation)
-- [ ] LLM-as-Judge evaluator (gpt-4o-mini, 8 metrik)
+- [ ] Two-Stage LLM-as-Judge evaluator (Stage 1: CoT reasoning, Stage 2: JSON skorlama)
+- [ ] reasoning_summary ve disagreement_claims ciktisi
 - [ ] Unit ve Integration testler
 - [ ] Swagger/OpenAPI dokumantasyonu
 
@@ -588,18 +606,22 @@ Query parametreleri:
 
 ## 9. Metrik Tablosu
 
-### Sprint 1 - Temel Metrikler (LLM-as-Judge)
+### Sprint 1 - Temel Metrikler (Two-Stage LLM-as-Judge)
+
+Stage 1 (CoT Reasoning) serbest metin muhakeme uretir, Stage 2 yapilandirilmis JSON'a donusturur.
 
 | No | Metrik | Tip | Kaynak | Aciklama |
 |---|---|---|---|---|
-| 1 | clarity | 0.0 - 1.0 | LLM | Soru anlasilir mi |
-| 2 | specificity | 0.0 - 1.0 | LLM | Soru yeterince spesifik mi |
-| 3 | is_off_topic | bool | LLM | Soru kapsam disi mi |
-| 4 | completeness | 0.0 - 1.0 | LLM | Cevap soruyu tam karsiliyor mu |
-| 5 | coherence | 0.0 - 1.0 | LLM | Cevap mantikli ve tutarli mi |
-| 6 | helpfulness | 0.0 - 1.0 | LLM | Cevap kullaniciya faydali mi |
-| 7 | is_deflection | bool | LLM | Sistem soruyu savusturuyor mu |
-| 8 | overall_score | 0.0 - 1.0 | LLM | Genel kalite puani |
+| 1 | clarity | 0.0 - 1.0 | Two-Stage LLM | Soru anlasilir mi |
+| 2 | specificity | 0.0 - 1.0 | Two-Stage LLM | Soru yeterince spesifik mi |
+| 3 | is_off_topic | bool | Two-Stage LLM | Soru kapsam disi mi |
+| 4 | completeness | 0.0 - 1.0 | Two-Stage LLM | Cevap soruyu tam karsiliyor mu |
+| 5 | coherence | 0.0 - 1.0 | Two-Stage LLM | Cevap mantikli ve tutarli mi |
+| 6 | helpfulness | 0.0 - 1.0 | Two-Stage LLM | Cevap kullaniciya faydali mi |
+| 7 | is_deflection | bool | Two-Stage LLM | Sistem soruyu savusturuyor mu |
+| 8 | overall_score | 0.0 - 1.0 | Two-Stage LLM | Genel kalite puani |
+
+Ek ciktilar: reasoning_summary (gerekce ozeti), disagreement_claims (claim bazli uyumsuzluk analizi)
 
 ### Sprint 2 - RAG Metrikleri
 
@@ -661,7 +683,10 @@ Puanlama notu: Tum 0.0-1.0 metriklerinde 1.0 en iyi, 0.0 en kotu skordur. Halluc
 | faithfulness | FLOAT | NULLABLE | Contexte sadakat (Sprint 2) |
 | hallucination | FLOAT | NULLABLE | Uydurma iddia orani (Sprint 2) |
 | citation_check | FLOAT | NULLABLE | Citation dogrulama (Sprint 2) |
-| raw_response | JSON | NULLABLE | LLM ham JSON yaniti |
+| reasoning_summary | TEXT | NULLABLE | Puanlamanin tek cumlelik gerekce ozeti |
+| disagreement_claims | JSON | NULLABLE | Context-cevap uyumsuzluk analizi (claim bazli) |
+| stage_1_reasoning | TEXT | NULLABLE | Stage 1 serbest metin muhakeme (ham CoT ciktisi) |
+| raw_response | JSON | NULLABLE | Stage 2 LLM ham JSON yaniti |
 | evaluated_at | TIMESTAMP | DEFAULT now() | Degerlendirme tarihi |
 | model_used | VARCHAR(50) | NULLABLE | Kullanilan LLM modeli |
 
@@ -741,9 +766,9 @@ llm-evaluation/
 │   │
 │   ├── evaluation/                   # Degerlendirme motoru
 │   │   ├── __init__.py
-│   │   ├── evaluator.py             # evaluate_trace() ana fonksiyon
+│   │   ├── evaluator.py             # evaluate_trace() ana fonksiyon (two-stage)
 │   │   ├── llm_client.py            # OpenAI async wrapper, retry
-│   │   ├── prompts.py               # LLM-as-Judge prompt sablonlari
+│   │   ├── prompts.py               # Stage 1 (CoT) ve Stage 2 (JSON) prompt sablonlari
 │   │   └── metrics.py               # Metrik hesaplama yardimcilari
 │   │
 │   ├── middleware/                    # Middleware katmani
@@ -795,17 +820,19 @@ llm-evaluation/
 | Input tokens | $0.15 / 1M token | Prompt + soru + cevap + context |
 | Output tokens | $0.60 / 1M token | JSON evaluation sonucu |
 
-Ortalama tek trace degerlendirmesi:
-- Input: ~800 token (prompt + soru + cevap)
-- Output: ~200 token (8 metrik JSON)
-- Maliyet/trace: ~$0.00024
+Iki asamali (two-stage) degerlendirme:
+- Stage 1 Input: ~800 token (CoT prompt + soru + cevap + context)
+- Stage 1 Output: ~400 token (serbest metin muhakeme)
+- Stage 2 Input: ~600 token (Stage 2 prompt + muhakeme metni)
+- Stage 2 Output: ~300 token (yapilandirilmis JSON + reasoning + claims)
+- Toplam maliyet/trace: ~$0.00042
 
 | Aylik Hacim | Trace/Ay | Tahmini Maliyet |
 |---|---|---|
-| Dusuk | 1,000 | ~$0.24 |
-| Orta | 10,000 | ~$2.40 |
-| Yuksek | 100,000 | ~$24.00 |
-| Cok Yuksek | 1,000,000 | ~$240.00 |
+| Dusuk | 1,000 | ~$0.42 |
+| Orta | 10,000 | ~$4.20 |
+| Yuksek | 100,000 | ~$42.00 |
+| Cok Yuksek | 1,000,000 | ~$420.00 |
 
 ### Sprint 2 Ek Maliyetler
 
@@ -841,9 +868,11 @@ Faithfulness ve Hallucination icin ek LLM cagrisi:
 - [ ] API key olmadan endpointlere erisim 401 donuyor
 - [ ] POST /api/v1/ingest ile tek trace gonderilebiliyor
 - [ ] POST /api/v1/ingest/batch ile toplu trace gonderilebiliyor
-- [ ] Trace gonderildikten sonra 8 metrik senkron olarak puanlaniyor
+- [ ] Trace gonderildikten sonra two-stage evaluation ile 8 metrik senkron olarak puanlaniyor
+- [ ] Stage 1 serbest metin muhakeme + Stage 2 yapilandirilmis JSON akisi calisiyor
+- [ ] reasoning_summary ve disagreement_claims evaluation sonucunda donuyor
 - [ ] GET /api/v1/traces ile pagination calisarak trace listesi donuyor
-- [ ] GET /api/v1/traces/{id} ile evaluation sonucu dahil trace detayi donuyor
+- [ ] GET /api/v1/traces/{id} ile evaluation sonucu + reasoning dahil trace detayi donuyor
 - [ ] Tum unit testler basariyla geciyor
 - [ ] Integration test: register -> ingest -> evaluate -> sonuc kontrol akisi calisiyor
 - [ ] LLM hata durumlari (timeout, rate limit, invalid JSON) ele alinmis
