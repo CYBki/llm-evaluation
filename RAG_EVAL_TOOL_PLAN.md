@@ -1,8 +1,7 @@
 ﻿# RAG Eval Tool - Yol Haritasi ve Sprint Plani
 
-Son Guncelleme: 10 Subat 2026
 Toplam Sure: 4 Hafta / 4 Sprint
-Sprint Suresi: 5 is gunu (Pazartesi - Cuma)
+
 
 ---
 
