@@ -39,11 +39,363 @@ Toplam Sure: 4 Hafta / 4 Sprint
 
 ## 1. Proje Ozeti
 
-Kullanicilar kendi RAG sistemlerine 2 satir SDK ekleyerek her soru-cevap etkilesiminin kalitesini otomatik olarak olcen bir SaaS evaluation platformu.
+Kullanicilar kendi RAG sistemlerine 3 satir SDK ekleyerek her soru-cevap-context etkilesiminin kalitesini otomatik olarak olcen bir SaaS evaluation platformu.
 
-Kullanici herhangi bir dataset yuklemez. Gercek kullanimdaki her soru-cevap cifti SDK araciligiyla otomatik olarak yakalanir ve iki asamali (two-stage) LLM-as-Judge yontemiyle puanlanir.
+Kullanici herhangi bir dataset yuklemez. Gercek kullanimdaki her soru + cevap + context SDK araciligiyla otomatik olarak yakalanir ve iki asamali (two-stage) LLM-as-Judge yontemiyle puanlanir.
 
 Degerlendirme Mimarisi: Rubric-based Chain-of-Thought prompting ile Stage 1 (gpt-4o-mini) her metrik icin puanlama cetvelini (rubric) kullanarak serbest metin muhakeme uretir, Stage 2 (gpt-3.5-turbo) bu muhakemeyi yapilandirilmis JSON skorlara donusturur. Bu sayede daha tutarli puanlama, derin analiz, aciklanabilir sonuclar ve claim bazli dogrulama saglanir.
+
+### Gelistirici Entegrasyonu (3 Satir)
+
+**ONCE — Geliştiricinin mevcut RAG kodu:**
+
+```python
+# app.py  (mevcut RAG uygulamasi)
+def chat(question: str) -> str:
+    contexts = retriever.search(question)        # 1) Retriever contextleri getirir
+    answer   = llm.generate(question, contexts)  # 2) LLM cevap uretir
+    return answer
+```
+
+**SONRA — Sadece 3 satir SDK eklenir:**
+
+```python
+# app.py  (+ rageval entegrasyonu)
+from rageval import RagEvalTracker                          # ← 1. satir
+
+tracker = RagEvalTracker(api_key="sk-abc...xyz")            # ← 2. satir
+
+def chat(question: str) -> str:
+    contexts = retriever.search(question)
+    answer   = llm.generate(question, contexts)
+    tracker.log(question=question, answer=answer, contexts=contexts)  # ← 3. satir
+    return answer
+```
+
+**Arka planda ne olur:**
+
+```
+Kullanici soru sorar
+        │
+        ▼
+  ┌─────────────┐
+  │  Retriever   │──→ contexts
+  └─────────────┘
+        │
+        ▼
+  ┌─────────────┐
+  │  Generator   │──→ answer
+  └─────────────┘
+        │
+        ▼
+  ┌──────────────────────────────────────────────────┐
+  │  tracker.log(question, answer, contexts)          │
+  │    ├─ POST /api/v1/ingest → trace DB'ye yazilir   │
+  │    ├─ Stage 1 (gpt-4o-mini): Rubric-based CoT     │
+  │    ├─ Stage 2 (gpt-3.5-turbo): JSON skorlama      │
+  │    └─ 8 metrik + reasoning DB'ye kaydedilir        │
+  └──────────────────────────────────────────────────┘
+        │
+        ▼
+  Dashboard'da sonuclar gorunur
+```
+
+**API key'i environment variable olarak kullanma:**
+
+```bash
+# .env dosyasina ekle
+RAGEVAL_API_KEY=sk-abc...xyz
+```
+
+```python
+import os
+from rageval import RagEvalTracker
+
+tracker = RagEvalTracker(api_key=os.getenv("RAGEVAL_API_KEY"))
+```
+
+Not: `api_key` parametresi verilmezse SDK otomatik olarak `RAGEVAL_API_KEY` env degiskenini arar.
+
+Not: `tracker.log()` cagrisi non-blocking (asenkron) calisir, RAG uygulamasinin yanit suresini etkilemez.
+
+**OpenAI API Key Kullanimi:**
+
+Gelistirici zaten kendi RAG uygulamasinda kullandigi OpenAI API key'ini ayni sekilde bizim tool icin de kullanir. Ekstra bir key almasi gerekmez.
+
+```
+Gelistiricinin Ortami
+─────────────────────
+.env dosyasi:
+  OPENAI_API_KEY=sk-proj-xxx        ← zaten var, RAG icin kullaniyor
+  RAGEVAL_API_KEY=re-abc...xyz      ← bizim platformdan alir (auth icin)
+
+Ayni OPENAI_API_KEY hem RAG hem eval icin kullanilir:
+
+  retriever.search(question)         → OPENAI_API_KEY ile embedding
+  llm.generate(question, contexts)   → OPENAI_API_KEY ile cevap uretimi
+  tracker.log(q, a, ctx)             → trace gonderir → backend OPENAI_API_KEY
+                                       ile Stage 1 + Stage 2 eval yapar
+```
+
+SDK, gelistiricinin ortamindaki `OPENAI_API_KEY` env degiskenini otomatik okur ve evaluation isteginde backend'e iletir. Backend bu key ile LLM eval cagrilarini yapar.
+
+```python
+import os
+from rageval import RagEvalTracker
+
+# OPENAI_API_KEY env'den otomatik okunur (zaten mevcut)
+# RAGEVAL_API_KEY env'den otomatik okunur (platformdan alinan auth key)
+tracker = RagEvalTracker()
+
+def chat(question: str) -> str:
+    contexts = retriever.search(question)
+    answer = llm.generate(question, contexts)
+    tracker.log(question=question, answer=answer, contexts=contexts)
+    return answer
+```
+
+| Key | Amac | Kim verir |
+|---|---|---|
+| `OPENAI_API_KEY` | LLM cagrisi (hem RAG hem eval) | Gelistiricinin kendi OpenAI hesabi |
+| `RAGEVAL_API_KEY` | Bizim platforma auth (X-API-Key) | Platformumuza kayit olunca uretilir |
+
+**Farkli model kullanilsa bile ekstra key gerekmez:**
+
+OpenAI API key hesap bazlidir, model bazli degildir. Tek bir `OPENAI_API_KEY` tum modellere erisim saglar.
+
+```
+Gelistiricinin tek OPENAI_API_KEY'i
+  │
+  ├─ RAG uygulamasi  → gpt-5 (veya gpt-4o, gpt-4-turbo, vb.)
+  ├─ Bizim eval tool → gpt-4o-mini (Stage 1) + gpt-3.5-turbo (Stage 2)
+  │
+  └─ Hepsi ayni key, ayni hesap, tek fatura
+```
+
+| Soru | Cevap |
+|---|---|
+| Ekip gpt-5 kullaniyor, eval tool gpt-4o-mini. Ekstra key gerekir mi? | **Hayir.** Ayni key tum modellere erisir |
+| Farkli modeller farkli fiyatlandirilir mi? | Evet, ama hepsi ayni faturada gorunur |
+| Eval maliyeti ne kadar ekler? | ~$0.00035/trace (gpt-5'e kiyasla ihmal edilebilir) |
+
+Not: Eval maliyeti (~$0.00035/trace) gelistiricinin mevcut OpenAI faturasina yansir. Ekstra hesap veya kurulum gerekmez.
+
+### Uc Uca Ornek: Bir Trace'in Hayat Dongusuu
+
+Asagida gercek bir soru-cevap etkilesiminin basindan sonuna nasil degerlendirildigini adim adim gosteriyoruz.
+
+**Senaryo:** Bir banka chatbot'u, musteri "Kredi karti limitimi nasil arttirabilirim?" diye soruyor.
+
+---
+
+**Adim 1 — Kullanici soru sorar, RAG sistemi cevap uretir:**
+
+```
+Kullanici: "Kredi karti limitimi nasil arttirabilirim?"
+
+Retriever sonucu (contexts):
+  [0] "Kredi karti limit artisi icin mobil uygulamadan veya 
+       subeden talep olusturabilirsiniz. Minimum 6 ay musteri 
+       olmak gerekir."
+  [1] "Limit artis talebi kredi skoruna gore degerlendirilir. 
+       Sonuc 3 is gunu icinde bildirilir."
+
+LLM cevabi (answer):
+  "Kredi karti limitinizi artirmak icin mobil uygulamadan talep 
+   olusturabilirsiniz. Basvurunuz 24 saat icinde sonuclanir. 
+   Ayrica subeden de islem yapabilirsiniz."
+```
+
+---
+
+**Adim 2 — SDK trace'i yakalar ve API'ye gonderir:**
+
+```python
+tracker.log(
+    question="Kredi karti limitimi nasil arttirabilirim?",
+    answer="Kredi karti limitinizi artirmak icin mobil uygulamadan...",
+    contexts=["Kredi karti limit artisi icin mobil...", "Limit artis talebi..."]
+)
+```
+
+SDK arka planda:
+```
+POST /api/v1/ingest
+Headers: X-API-Key: re-abc...xyz
+Body: { question, answer, contexts }
+
+→ API trace'i DB'ye kaydeder (status: "pending")
+→ Evaluation baslatilir
+```
+
+---
+
+**Adim 3 — Stage 1: gpt-4o-mini Rubric-based CoT Muhakeme**
+
+Backend soruyu + cevabi + contexti + rubric'i gpt-4o-mini'ye gonderir:
+
+```
+[Stage 1 Prompt ozeti]
+Sen bir degerlendirme uzmanisisin. Asagidaki soru, cevap ve baglami 
+rubric cetvellerine gore degerlendir. Her metrik icin adim adim 
+muhakeme yap.
+
+Soru: "Kredi karti limitimi nasil arttirabilirim?"
+Cevap: "...mobil uygulamadan talep... 24 saat icinde sonuclanir... 
+        subeden de islem yapabilirsiniz."
+Baglam: ["...mobil uygulama veya sube...", "...3 is gunu icinde..."]
+
+Rubric:
+  completeness: 1.0=tam, 0.7=cogu, 0.4=kismi, 0.0=ilgisiz
+  helpfulness:  1.0=dogrudan cozer, 0.7=eksik ama faydali...
+  ...
+```
+
+gpt-4o-mini serbest metin muhakeme uretir:
+
+```
+[Stage 1 Ciktisi — Serbest metin muhakeme]
+
+CLARITY: Soru kisa, net ve anlasilir. Tek bir amac var: limit artisi. 
+Puan: yuksek.
+
+COMPLETENESS: Cevap mobil uygulama ve subeyi belirtiyor, bu dogru. 
+Ancak cevap "24 saat icinde sonuclanir" diyor, baglam ise "3 is gunu 
+icinde" diyor. Eksik: minimum 6 ay musteri sartindan bahsetmiyor. 
+Puan: orta.
+
+COHERENCE: Cevap mantikli bir akisla yazilmis, cumleler birbiriyle 
+tutarli. Puan: yuksek.
+
+HELPFULNESS: Mobil uygulama ve sube bilgisi faydali. Ancak sure 
+bilgisi yanlis, bu kullaniciyi yaniltabilir. Puan: orta.
+
+IS_DEFLECTION: Hayir, cevap soruyu cevaplamaya calisiyor.
+
+HALLUCINATION ANALIZI:
+- Claim 1: "Mobil uygulamadan talep olusturabilirsiniz" → Baglam 
+  destekliyor ✅
+- Claim 2: "24 saat icinde sonuclanir" → Baglam "3 is gunu" diyor ❌ 
+  UYDURMA
+- Claim 3: "Subeden de islem yapabilirsiniz" → Baglam destekliyor ✅
+
+OVERALL: Cevap kismen faydali ama sure bilgisi uydurma.
+```
+
+---
+
+**Adim 4 — Stage 2: gpt-3.5-turbo JSON Skorlama**
+
+Muhakeme metni gpt-3.5-turbo'ya gonderilir, yapilandirilmis JSON'a donusturulur:
+
+```json
+{
+  "clarity": 0.95,
+  "specificity": 0.80,
+  "is_off_topic": false,
+  "completeness": 0.55,
+  "coherence": 0.90,
+  "helpfulness": 0.60,
+  "is_deflection": false,
+  "overall_score": 0.65,
+  "evaluation_confidence": 0.88,
+  "reasoning_summary": "Cevap dogru yonlendirme yapiyor ancak sure bilgisi baglama aykiri (3 is gunu yerine 24 saat) ve musteri sartindan bahsetmiyor.",
+  "disagreement_claims": [
+    {
+      "claim": "Basvuru 24 saat icinde sonuclanir",
+      "context_says": "Sonuc 3 is gunu icinde bildirilir",
+      "type": "contradiction"
+    },
+    {
+      "claim": "Minimum musteri suresi gerekliligi",
+      "context_says": "Minimum 6 ay musteri olmak gerekir",
+      "type": "missing_info"
+    }
+  ]
+}
+```
+
+---
+
+**Adim 5 — Skorlar DB'ye kaydedilir:**
+
+```
+evaluation_results tablosu:
+  trace_id:        "abc-123"
+  clarity:          0.95
+  specificity:      0.80
+  completeness:     0.55
+  coherence:        0.90
+  helpfulness:      0.60
+  overall_score:    0.65
+  is_off_topic:     false
+  is_deflection:    false
+  evaluation_confidence: 0.88
+  reasoning_summary: "Cevap dogru yonlendirme yapiyor ancak..."
+  disagreement_claims: [{claim: "24 saat", ...}]
+  stage_1_reasoning: "CLARITY: Soru kisa, net..."
+  model_used:       "gpt-4o-mini + gpt-3.5-turbo"
+  prompt_version:   "v1.0"
+  rubric_version:   "v1.0"
+
+traces tablosu:
+  status: "pending" → "completed"
+```
+
+---
+
+**Adim 6 — Dashboard'da gorunum:**
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  TRACE DETAIL — abc-123                                   │
+│                                                           │
+│  Soru: "Kredi karti limitimi nasil arttirabilirim?"       │
+│  Cevap: "...mobil uygulamadan talep... 24 saat icinde..." │
+│                                                           │
+│  ┌──────────── SKORLAR ─────────────┐                    │
+│  │ clarity:      █████████░  0.95   │                    │
+│  │ coherence:    █████████░  0.90   │                    │
+│  │ specificity:  ████████░░  0.80   │                    │
+│  │ overall:      ██████░░░░  0.65   │                    │
+│  │ helpfulness:  ██████░░░░  0.60   │                    │
+│  │ completeness: █████░░░░░  0.55   │  ← Dusuk!         │
+│  │ off_topic:    Hayir ✅           │                    │
+│  │ deflection:   Hayir ✅           │                    │
+│  └──────────────────────────────────┘                    │
+│                                                           │
+│  ⚠️ Uyumsuzluk Tespit Edildi:                            │
+│  ┌──────────────────────────────────────────────┐        │
+│  │ ❌ "24 saat icinde sonuclanir"                │        │
+│  │    Baglam: "3 is gunu icinde bildirilir"      │        │
+│  │    Tip: contradiction (celiskili bilgi)        │        │
+│  │                                               │        │
+│  │ ⚠️ Eksik bilgi: minimum 6 ay musteri sarti    │        │
+│  │    Tip: missing_info                          │        │
+│  └──────────────────────────────────────────────┘        │
+│                                                           │
+│  Gerekce: "Cevap dogru yonlendirme yapiyor ancak sure    │
+│  bilgisi baglama aykiri ve musteri sartindan bahsetmiyor" │
+└──────────────────────────────────────────────────────────┘
+```
+
+---
+
+**Ozet — Bir trace'in 6 adimi:**
+
+```
+Kullanici sorar → RAG cevap uretir → SDK yakalar → Stage 1 muhakeme 
+→ Stage 2 JSON skorlama → Dashboard'da gosterilir
+```
+
+| Adim | Ne olur | Sure |
+|---|---|---|
+| 1. RAG cevap uretir | Retriever + Generator | ~1-2 sn (RAG'in islemi) |
+| 2. SDK trace gonderir | HTTP POST /ingest | ~50 ms |
+| 3. Stage 1 muhakeme | gpt-4o-mini rubric CoT | ~2-3 sn |
+| 4. Stage 2 JSON | gpt-3.5-turbo formatlama | ~1 sn |
+| 5. DB kayit | Skorlar + reasoning yazilir | ~10 ms |
+| 6. Dashboard | Kullanici sonucu gorur | anlik |
 
 ---
 
@@ -136,6 +488,7 @@ Gun 4 - Persembe - Test ve Hata Yonetimi
 |---|
 | Unit testler: auth, ingest, evaluation servisleri |
 | Integration test: register, ingest, evaluate, sonuc kontrol |
+| Golden set regression test: sabit 50-100 trace ile skor tutarliligi kontrol |
 | Hata yonetimi: LLM timeout, rate limit, JSON parse |
 | Structured logging (request_id bazli) |
 | Edge case: bos soru, cok uzun cevap, eksik alan |
@@ -168,6 +521,183 @@ Iki asamali Rubric-based CoT ile tum metrikler puanlanir. Stage 1 (gpt-4o-mini) 
 | 7 | is_deflection | bool | Sistem soruyu savusturuyor mu |
 | 8 | overall_score | 0.0 - 1.0 | Genel kalite puani |
 
+### 4.2.1 Rubric Sablonlari (Ornek)
+
+**completeness**
+- 1.0: Sorudaki tum alt sorular/talepler eksiksiz cevaplanmis
+- 0.7: Sorunun buyuk kismi cevaplanmis, 1-2 nokta eksik
+- 0.4: Sorunun sadece bir kismi cevaplanmis
+- 0.0: Cevap soruyla ilgisiz veya bos
+
+**helpfulness**
+- 1.0: Cevap kullanici hedefini dogrudan cozer, uygulanabilir
+- 0.7: Faydalı ama eksik/ustunkoru
+- 0.4: Kismen alakali fakat yeterince faydali degil
+- 0.0: Faydasiz veya alakasiz
+
+**is_deflection**
+- true: “Bu konuda yardimci olamiyorum”, “bilmiyorum”, konu disina kacma
+- false: Soruyu cevaplama niyeti var ve icerik sunuyor
+
+Not: Her evaluation sonucu icin `prompt_version` ve `rubric_version` alanlari DB'ye yazilarak izlenebilirlik saglanacak.
+
+### 4.2.2 Rubric Nasil Belirleniyor?
+
+Rubric'ler (puanlama cetvelleri) sabit degil, sistematik bir surecle olusturulur ve zamanla evrilir.
+
+**Kaynak: Akademik literatur + endustri standartlari**
+
+Metrikler ve puanlama seviyeleri su kaynaklardan turetilmistir:
+
+| Metrik | Ilham Kaynagi |
+|---|---|
+| completeness | RAGAS (Retrieval Augmented Generation Assessment) frameworku |
+| coherence | G-Eval (NLG kalite degerlendirme) yaklasimi |
+| helpfulness | RLHF (Reinforcement Learning from Human Feedback) reward modelleri |
+| is_off_topic | Intent classification literaturunden |
+| is_deflection | Chatbot UX arastirmalarindan |
+| clarity / specificity | Soru kalitesi degerlendirme literaturunden |
+| disagreement_claims | Datadog LLM Hallucination Detection yaklasimi (claim bazli dogrulama) |
+
+**Surecin 4 adimi:**
+
+```
+Adim 1: Taslak Rubric Olusturma
+  ↓
+  Literatur + domain bilgisi ile ilk rubric'ler yazilir
+  Ornek: completeness icin 4 kademe (1.0, 0.7, 0.4, 0.0) 
+  ve her kademe icin acik, somut tanim
+
+Adim 2: Golden Set ile Kalibrasyon
+  ↓
+  50-100 ornek trace (soru + cevap + context) uzerinde:
+  - Insan degerlendirici 3 kisi bagimsiz puanlar
+  - LLM ayni trace'leri rubric'e gore puanlar
+  - Insan-LLM uyumu olculur (Cohen's Kappa >= 0.7 hedef)
+  
+  Dusuk uyum olan metriklerde rubric ifadeleri netlestirilir.
+  Ornek: "buyuk kismi cevaplanmis" belirsiz → 
+         "sorudaki 3+ alt konudan en az 2'si cevaplanmis" gibi
+         somut hale getirilir.
+
+Adim 3: A/B Test ile Dogrulama
+  ↓
+  Rubric v1 vs v2 ayni trace setinde karsilastirilir:
+  - Hangi versiyon insan puanlarina daha yakin?
+  - Hangi versiyonda LLM daha tutarli? (ayni soruya 
+    tekrar sorulunca ayni puani veriyor mu?)
+  
+  Kazanan versiyon uretim rubric'i olur.
+
+Adim 4: Surekli Iyilestirme
+  ↓
+  Uretim verileri birikince:
+  - Dusuk evaluation_confidence skorlu trace'ler ekip tarafindan incelenir
+  - Kullanici geri bildirimi (thumbs up/down) rubric'i dogrudan 
+    degistirmez, sadece "ekibin nereye bakmasi gerektigini" gosterir
+  - Ekip inceleme sonucunda rubric ifadelerini gunceller
+  - rubric_version arttirilir (v1.0 → v1.1 → v2.0)
+  - Eski versiyonla puanlanan trace'ler karsilastirma icin saklanir
+  
+  Not: Rubric evrimi otonom degil, ekip-gudumlududur. Kullanici 
+  geri bildirimi bir onceliklendirme sinyalidir, otomatik 
+  rubric degisikligi tetiklemez.
+```
+
+**Rubric prompt'a nasil gomiluyor?**
+
+Rubric dogrudan Stage 1 system prompt'unun icine yerlestirilir:
+
+```
+[System Prompt - Stage 1]
+
+Sen bir RAG cevap kalitesi degerlendirme uzmanisisin.
+Asagidaki soru, cevap ve baglami her metrik icin
+verilen puanlama cetvelini kullanarak degerlendir.
+
+--- RUBRIC BASLANGIC ---
+
+COMPLETENESS:
+  1.0 = Sorudaki tum alt sorular/talepler eksiksiz cevaplanmis
+  0.7 = Sorunun buyuk kismi cevaplanmis, 1-2 nokta eksik
+  0.4 = Sorunun sadece bir kismi cevaplanmis
+  0.0 = Cevap soruyla ilgisiz veya bos
+
+HELPFULNESS:
+  1.0 = Cevap kullanici hedefini dogrudan cozer, uygulanabilir
+  0.7 = Faydali ama eksik/ustunkoru
+  0.4 = Kismen alakali fakat yeterince faydali degil
+  0.0 = Faydasiz veya alakasiz
+
+COHERENCE:
+  1.0 = Cumleler mantikli siralanmis, celiskisiz, akici
+  0.7 = Genel olarak tutarli, kucuk kopukluklar var
+  0.4 = Bazi cumleler birbiriyle celisiyor veya kopuk
+  0.0 = Anlamsiz veya tamamen tutarsiz
+
+CLARITY:
+  1.0 = Soru net, tek anlamli, anlasilir
+  0.7 = Anlasilir ama biraz belirsiz
+  0.4 = Birden fazla anlama gelebilir
+  0.0 = Anlamsiz veya parse edilemez
+
+SPECIFICITY:
+  1.0 = Somut, olculebilir, dar kapsamli soru
+  0.7 = Makul duzeyde spesifik
+  0.4 = Genis/genel bir soru
+  0.0 = Anlamsiz derecede belirsiz
+
+IS_OFF_TOPIC:
+  true  = Soru sistemin kapsam alaniyla ilgisiz
+  false = Soru kapsam dahilinde
+
+IS_DEFLECTION:
+  true  = Cevap "bilmiyorum", "yardimci olamiyorum" gibi 
+          savusturma iceriyor ve bilgi sunmuyor
+  false = Soruyu cevaplama niyeti var, icerik sunuyor
+
+HALLUCINATION ANALIZI:
+  Cevaptaki her factual claim'i baglamdaki bilgiyle karsilastir:
+  - supported:     Baglam dogrudan destekliyor ✅
+  - contradiction: Baglam farkli/celiskili bilgi veriyor ❌
+  - missing_info:  Baglam bu konuda bilgi icermiyor ⚠️
+  - fabricated:    Baglamda hic olmayan detay uydurulmus ❌
+
+--- RUBRIC BITIS ---
+
+Simdi asagidaki trace'i degerlendir:
+Soru: {question}
+Cevap: {answer}
+Baglam: {contexts}
+
+Her metrik icin adim adim muhakeme yap.
+```
+
+**Neden sabit seviyeler (1.0 / 0.7 / 0.4 / 0.0)?**
+
+LLM'lerin 0-1 arasinda surekli skor vermesi tutarsizdir (ayni cevaba bir seferinde 0.72, digerine 0.68 verebilir). Sabit anchor noktlari (1.0, 0.7, 0.4, 0.0) kullanmak:
+- LLM'in karar uzayini daraltir → daha tutarli puanlama
+- Insan kalibrasyonunu kolaylastirir (4 kademe vs sonsuz skala)
+- Gercek cikti yine de 0.0-1.0 arasi olabilir (LLM "0.7 ile 0.4 arasi, 0.55" diyebilir) ama anchor'lar rehber gorevi gorur
+
+**Rubric versiyonlama:**
+
+```
+rubric_versions tablosu:
+  version:    "v1.0"
+  created_at: "2026-02-15"
+  metrics:    {completeness: {...}, helpfulness: {...}, ...}
+  changelog:  "Ilk versiyon"
+
+  version:    "v1.1"  
+  created_at: "2026-03-01"
+  metrics:    {completeness: {0.7 ifadesi guncellendi}, ...}
+  changelog:  "completeness 0.7 seviyesi netlesti: '3+ alt 
+               konudan en az 2si cevaplanmis' eklendi"
+```
+
+Her evaluation sonucunda `rubric_version` alani saklanir, boylece zaman icinde rubric degisse bile eski puanlamalarin hangi cetvel ile yapildigini biliyoruz.
+
 Ek Alanlar (Two-Stage ciktisi):
 
 | Alan | Tip | Aciklama |
@@ -175,6 +705,7 @@ Ek Alanlar (Two-Stage ciktisi):
 | reasoning_summary | string | Puanlamanin tek cumlelik gerekce ozeti |
 | disagreement_claims | JSON array | Context-cevap uyumsuzluk analizi (claim bazli) |
 | stage_1_reasoning | text | Stage 1 serbest metin muhakeme (ham cikti) |
+| evaluation_confidence | float | Skor guven puani (0.0-1.0) |
 
 ### 4.3 Teslim Edilecekler
 
@@ -188,6 +719,7 @@ Ek Alanlar (Two-Stage ciktisi):
 - [ ] GET /api/v1/traces/{id} (detay + evaluation)
 - [ ] Two-Stage LLM-as-Judge evaluator (Stage 1: gpt-4o-mini Rubric-based CoT, Stage 2: gpt-3.5-turbo JSON skorlama)
 - [ ] reasoning_summary ve disagreement_claims ciktisi
+- [ ] Rate limiting + basic quota (kullanici bazli gunluk limit)
 - [ ] Unit ve Integration testler
 - [ ] Swagger/OpenAPI dokumantasyonu
 
@@ -239,9 +771,9 @@ Gun 4 - Persembe - Batch File Upload ve Test
 
 | Gorev |
 |---|
-| POST /api/v1/ingest/upload (CSV/JSON dosya kabul) |
-| Parser: CSV ve JSON format destegi |
-| Upload sonrasi Celery ile toplu eval |
+| (Opsiyonel) POST /api/v1/ingest/upload (CSV/JSON dosya kabul) |
+| (Opsiyonel) Parser: CSV ve JSON format destegi |
+| (Opsiyonel) Upload sonrasi Celery ile toplu eval |
 | Yeni metrikler ve async flow icin testler |
 
 Beklenen cikti: Dosya upload et, toplu degerlendir.
@@ -276,8 +808,8 @@ Beklenen cikti: Sprint 2 tamamlandi, 13 metrik + async + batch.
 - [ ] Faithfulness metrigi
 - [ ] Hallucination Detection metrigi
 - [ ] Citation Check metrigi
-- [ ] POST /api/v1/ingest/upload (dosya upload)
-- [ ] Batch processing (Celery ile toplu eval)
+- [ ] (Opsiyonel) POST /api/v1/ingest/upload (dosya upload)
+- [ ] (Opsiyonel) Batch processing (Celery ile toplu eval)
 - [ ] Retry mekanizmasi
 - [ ] Testler (async flow + yeni metrikler)
 
@@ -313,16 +845,66 @@ Gun 2 - Sali - Analytics: Worst Traces, Distribution, Deflections, Compare
 
 Beklenen cikti: 6 analytics endpoint tam calisiyor.
 
-Gun 3 - Carsamba - Python SDK
+Gun 3 - Carsamba - Python SDK + PyPI Yayinlama
 
 | Gorev |
 |---|
 | rageval paketi: __init__.py, client.py, tracker.py |
 | RagEvalTracker: tracker.log(question, answer, contexts) |
 | SDK ozellikleri: retry, batch buffer, error callback |
+| pyproject.toml: paket adi, versiyon, bagimliliklar, metadata |
+| README.md (SDK): kurulum, hizli baslangic, API referans |
+| PyPI'ye yayinlama: twine ile upload (TestPyPI ile test sonrasi) |
+| Versiyon stratejisi: semantic versioning (0.1.0 ile baslat) |
 | SDK unit test ve entegrasyon testi |
 
-Beklenen cikti: pip install rageval ile 2 satir entegrasyon calisiyor.
+PyPI Yayinlama Akisi:
+```
+1. TestPyPI'ye yukle ve test et:
+   pip install build twine
+   python -m build
+   twine upload --repository testpypi dist/*
+   pip install --index-url https://test.pypi.org/simple/ rageval
+
+2. Test basarili → gercek PyPI'ye yukle:
+   twine upload dist/*
+
+3. Kullanici kurar:
+   pip install rageval
+```
+
+pyproject.toml ornegi:
+```toml
+[project]
+name = "rageval"
+version = "0.1.0"
+description = "RAG evaluation SDK - 3 satir ile otomatik kalite olcumu"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name = "RAG Eval Team"}]
+keywords = ["rag", "evaluation", "llm", "quality"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "httpx>=0.25.0",
+    "pydantic>=2.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-org/rageval"
+Documentation = "https://docs.rageval.dev"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+```
+
+Beklenen cikti: `pip install rageval` ile PyPI'den kurulum calisiyor, 3 satir entegrasyon hazir.
 
 Gun 4 - Persembe - Docker Deploy ve Production Config
 
@@ -355,6 +937,8 @@ Beklenen cikti: Backend tamamen hazir, SDK calisiyor, deploy edilebilir.
 - [ ] GET /api/v1/analytics/deflections
 - [ ] GET /api/v1/analytics/compare
 - [ ] Python SDK (rageval paketi)
+- [ ] PyPI'ye yayinlama (pip install rageval)
+- [ ] SDK README.md (kurulum + hizli baslangic + API referans)
 - [ ] Production Docker Compose
 - [ ] Health check endpoint
 - [ ] E2E test senaryosu
@@ -679,6 +1263,7 @@ Puanlama notu: Tum 0.0-1.0 metriklerinde 1.0 en iyi, 0.0 en kotu skordur. Halluc
 | helpfulness | FLOAT | NULLABLE | Cevap faydasi (0.0-1.0) |
 | is_deflection | BOOLEAN | NULLABLE | Savusturma var mi |
 | overall_score | FLOAT | NULLABLE | Genel kalite (0.0-1.0) |
+| evaluation_confidence | FLOAT | NULLABLE | Skor guven puani (0.0-1.0) |
 | answer_relevancy | FLOAT | NULLABLE | Soru-cevap benzerlik (Sprint 2) |
 | faithfulness | FLOAT | NULLABLE | Contexte sadakat (Sprint 2) |
 | hallucination | FLOAT | NULLABLE | Uydurma iddia orani (Sprint 2) |
@@ -689,6 +1274,8 @@ Puanlama notu: Tum 0.0-1.0 metriklerinde 1.0 en iyi, 0.0 en kotu skordur. Halluc
 | raw_response | JSON | NULLABLE | Stage 2 LLM ham JSON yaniti |
 | evaluated_at | TIMESTAMP | DEFAULT now() | Degerlendirme tarihi |
 | model_used | VARCHAR(50) | NULLABLE | Kullanilan LLM modeli |
+| prompt_version | VARCHAR(50) | NULLABLE | Kullanilan prompt/rubric versiyonu |
+| rubric_version | VARCHAR(50) | NULLABLE | Kullanilan rubric versiyonu |
 
 ### Iliskiler
 
@@ -836,6 +1423,16 @@ Iki asamali Rubric-based CoT degerlendirme:
 | Yuksek | 100,000 | ~$35.00 |
 | Cok Yuksek | 1,000,000 | ~$350.00 |
 
+### 12.1 SLO (Latency ve Maliyet Hedefleri)
+
+| SLO | Hedef | Not |
+|---|---|---|
+| Eval latency p95 (S1, senkron) | < 5 sn | Two-Stage LLM cagrisi dahil |
+| Eval latency p95 (S2, async) | < 30 sn | Kuyruk + worker dahil |
+| API response p95 (non-eval) | < 300 ms | Auth, traces list, analytics sorgulari |
+| Maliyet/trace (S1) | <= $0.00035 | Rubric-based CoT two-stage |
+| Maliyet/trace (S2) | <= $0.0005 | Ek claim extraction dahil |
+
 ### Sprint 2 Ek Maliyetler
 
 Faithfulness ve Hallucination icin ek LLM cagrisi:
@@ -873,6 +1470,8 @@ Faithfulness ve Hallucination icin ek LLM cagrisi:
 - [ ] Trace gonderildikten sonra two-stage evaluation ile 8 metrik senkron olarak puanlaniyor
 - [ ] Stage 1 (gpt-4o-mini) Rubric-based CoT muhakeme + Stage 2 (gpt-3.5-turbo) yapilandirilmis JSON akisi calisiyor
 - [ ] reasoning_summary ve disagreement_claims evaluation sonucunda donuyor
+- [ ] evaluation_confidence (0.0-1.0) skoru evaluation sonucunda donuyor
+- [ ] Kullanici bazli rate limiting ve gunluk quota uygulanabiliyor
 - [ ] GET /api/v1/traces ile pagination calisarak trace listesi donuyor
 - [ ] GET /api/v1/traces/{id} ile evaluation sonucu + reasoning dahil trace detayi donuyor
 - [ ] Tum unit testler basariyla geciyor
