@@ -1,0 +1,37 @@
+import uuid
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.database import Base
+
+
+class EvaluationResult(Base):
+    __tablename__ = "evaluation_results"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    trace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("traces.id"), nullable=False, unique=True, index=True)
+
+    clarity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    specificity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    is_off_topic: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    completeness: Mapped[float | None] = mapped_column(Float, nullable=True)
+    coherence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    helpfulness: Mapped[float | None] = mapped_column(Float, nullable=True)
+    is_deflection: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    overall_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    evaluation_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reasoning_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    disagreement_claims: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
+    stage_1_reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_response: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    model_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    rubric_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    trace = relationship("Trace", back_populates="evaluation_result")
