@@ -3,14 +3,31 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import logging
+import re
+
 from app.config import settings
 from app.evaluation.llm_client import LLMClientError, OpenAILLMClient
 from app.evaluation.prompts import (
+    STAGE_2_JSON_SCHEMA,
+    STAGE_2_REPAIR_SYSTEM_PROMPT,
     STAGE_1_SYSTEM_PROMPT,
     STAGE_2_SYSTEM_PROMPT,
     build_stage_1_user_prompt,
+    build_stage_2_repair_user_prompt,
     build_stage_2_user_prompt,
 )
+
+logger = logging.getLogger(__name__)
+
+_FLOAT_FIELDS = [
+    "clarity", "specificity", "completeness", "coherence",
+    "helpfulness", "overall_score", "evaluation_confidence",
+]
+_BOOL_FIELDS = ["is_off_topic", "is_deflection"]
+_REQUIRED_FIELDS = _FLOAT_FIELDS + _BOOL_FIELDS + ["reasoning_summary", "disagreement_claims"]
+
+_MAX_STAGE_2_RETRIES = 3
 
 
 async def evaluate_trace(question: str, answer: str, contexts: list[str] | None) -> dict[str, Any]:
@@ -42,15 +59,50 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None)
             model=settings.stage_1_model,
             system_prompt=STAGE_1_SYSTEM_PROMPT,
             user_prompt=build_stage_1_user_prompt(question, answer, context_items),
+            max_completion_tokens=16384,
         )
 
-        stage_2 = await client.chat_completion(
-            model=settings.stage_2_model,
-            system_prompt=STAGE_2_SYSTEM_PROMPT,
-            user_prompt=build_stage_2_user_prompt(stage_1.content),
-        )
+        # ── Stage 2: structured output with retry loop ──
+        parsed: dict[str, Any] = {}
+        raw_responses: list[dict[str, Any]] = []
+        last_output = ""
 
-        parsed = _safe_parse_json(stage_2.content)
+        for attempt in range(_MAX_STAGE_2_RETRIES):
+            if attempt == 0:
+                s2_resp = await client.chat_completion(
+                    model=settings.stage_2_model,
+                    system_prompt=STAGE_2_SYSTEM_PROMPT,
+                    user_prompt=build_stage_2_user_prompt(stage_1.content),
+                    max_completion_tokens=2048,
+                    json_schema=STAGE_2_JSON_SCHEMA,
+                )
+            else:
+                validation_errors = _describe_validation_errors(parsed)
+                logger.info("Stage 2 retry %d/%d – errors: %s", attempt + 1, _MAX_STAGE_2_RETRIES, validation_errors)
+                s2_resp = await client.chat_completion(
+                    model=settings.stage_2_model,
+                    system_prompt=STAGE_2_REPAIR_SYSTEM_PROMPT,
+                    user_prompt=build_stage_2_repair_user_prompt(
+                        last_output, stage_1.content, validation_errors
+                    ),
+                    max_completion_tokens=2048,
+                    json_schema=STAGE_2_JSON_SCHEMA,
+                )
+
+            last_output = s2_resp.content
+            raw_responses.append(s2_resp.raw)
+            parsed = _safe_parse_json(s2_resp.content)
+
+            errors = _validate_schema(parsed)
+            if not errors:
+                logger.info("Stage 2 succeeded on attempt %d", attempt + 1)
+                break
+        else:
+            # All LLM retries exhausted – try deterministic regex fallback
+            logger.warning("Stage 2 LLM retries exhausted, trying regex fallback")
+            fallback = _regex_extract_scores(stage_1.content)
+            if fallback.get("overall_score") is not None:
+                parsed = fallback
 
         return {
             "clarity": parsed.get("clarity"),
@@ -65,7 +117,7 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None)
             "reasoning_summary": parsed.get("reasoning_summary"),
             "disagreement_claims": parsed.get("disagreement_claims", []),
             "stage_1_reasoning": stage_1.content,
-            "raw_response": stage_2.raw,
+            "raw_response": raw_responses,
             "model_used": f"{settings.stage_1_model} + {settings.stage_2_model}",
             "prompt_version": settings.prompt_version,
             "rubric_version": settings.rubric_version,
@@ -92,10 +144,122 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None)
 
 
 def _safe_parse_json(content: str) -> dict[str, Any]:
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        return {
-            "reasoning_summary": "Stage 2 JSON parse failed",
-            "disagreement_claims": [],
-        }
+    """Best-effort extraction of a JSON object from model output."""
+    raw = (content or "").strip()
+    candidates: list[str] = [raw]
+
+    # Strip markdown code fences
+    if raw.startswith("```"):
+        lines = raw.splitlines()
+        if len(lines) >= 3 and lines[-1].strip().startswith("```"):
+            body = "\n".join(lines[1:-1]).strip()
+            if body:
+                candidates.insert(0, body)
+
+    # Extract outermost { ... }
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        candidates.insert(0, raw[start : end + 1])
+
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return _coerce_types(parsed)
+
+    return {
+        "reasoning_summary": "Stage 2 JSON parse failed",
+        "disagreement_claims": [],
+    }
+
+
+def _coerce_types(parsed: dict[str, Any]) -> dict[str, Any]:
+    """Clamp floats to [0,1] and coerce string booleans."""
+    for field in _FLOAT_FIELDS:
+        val = parsed.get(field)
+        if val is not None:
+            try:
+                val = float(val)
+                parsed[field] = max(0.0, min(1.0, val))
+            except (ValueError, TypeError):
+                parsed[field] = None
+    for field in _BOOL_FIELDS:
+        val = parsed.get(field)
+        if isinstance(val, str):
+            parsed[field] = val.lower() in ("true", "1", "yes", "evet")
+    if not isinstance(parsed.get("disagreement_claims"), list):
+        parsed["disagreement_claims"] = []
+    return parsed
+
+
+def _validate_schema(parsed: dict[str, Any]) -> list[str]:
+    """Return list of validation error descriptions.  Empty = valid."""
+    errors: list[str] = []
+    for f in _REQUIRED_FIELDS:
+        if f not in parsed or parsed[f] is None:
+            errors.append(f"Missing or null field: {f}")
+    for f in _FLOAT_FIELDS:
+        v = parsed.get(f)
+        if v is not None and not isinstance(v, (int, float)):
+            errors.append(f"{f} must be a number, got {type(v).__name__}")
+    for f in _BOOL_FIELDS:
+        v = parsed.get(f)
+        if v is not None and not isinstance(v, bool):
+            errors.append(f"{f} must be boolean, got {type(v).__name__}")
+    if not isinstance(parsed.get("disagreement_claims"), list):
+        errors.append("disagreement_claims must be an array")
+    if (parsed.get("reasoning_summary") or "").strip() == "Stage 2 JSON parse failed":
+        errors.append("JSON parse failed")
+    return errors
+
+
+def _describe_validation_errors(parsed: dict[str, Any]) -> str:
+    """Human-readable validation error string for retry prompt."""
+    errors = _validate_schema(parsed)
+    return "; ".join(errors) if errors else "unknown"
+
+
+def _regex_extract_scores(stage_1_text: str) -> dict[str, Any]:
+    """Deterministic fallback: extract scores from Stage 1 CoT text via regex."""
+    result: dict[str, Any] = {
+        "reasoning_summary": "Scores extracted via regex fallback from Stage 1 text.",
+        "disagreement_claims": [],
+    }
+
+    # Patterns like "CLARITY: 0.7", "Clarity: 0.7/1.0", "clarity = 0.7" etc.
+    float_patterns = {
+        "clarity": r"(?:CLARITY|clarity)[:\s=]+([01](?:\.\d+)?)",
+        "specificity": r"(?:SPECIFICITY|specificity)[:\s=]+([01](?:\.\d+)?)",
+        "completeness": r"(?:COMPLETENESS|completeness)[:\s=]+([01](?:\.\d+)?)",
+        "coherence": r"(?:COHERENCE|coherence)[:\s=]+([01](?:\.\d+)?)",
+        "helpfulness": r"(?:HELPFULNESS|helpfulness)[:\s=]+([01](?:\.\d+)?)",
+        "evaluation_confidence": r"(?:EVALUATION.?CONFIDENCE|confidence)[:\s=]+([01](?:\.\d+)?)",
+    }
+
+    for field, pattern in float_patterns.items():
+        m = re.search(pattern, stage_1_text, re.IGNORECASE)
+        if m:
+            try:
+                result[field] = max(0.0, min(1.0, float(m.group(1))))
+            except ValueError:
+                pass
+
+    # Booleans
+    off_topic_m = re.search(r"(?:IS.?OFF.?TOPIC|off.?topic)[:\s=]+(true|false|evet|hayir)", stage_1_text, re.IGNORECASE)
+    if off_topic_m:
+        result["is_off_topic"] = off_topic_m.group(1).lower() in ("true", "evet")
+
+    defl_m = re.search(r"(?:IS.?DEFLECTION|deflection)[:\s=]+(true|false|evet|hayir)", stage_1_text, re.IGNORECASE)
+    if defl_m:
+        result["is_deflection"] = defl_m.group(1).lower() in ("true", "evet")
+
+    # Compute overall_score as average of found float scores
+    found_scores = [v for k, v in result.items() if k in _FLOAT_FIELDS and isinstance(v, (int, float))]
+    if found_scores:
+        result["overall_score"] = round(sum(found_scores) / len(found_scores), 2)
+        result["evaluation_confidence"] = result.get("evaluation_confidence", round(len(found_scores) / len(_FLOAT_FIELDS), 2))
+
+    return result

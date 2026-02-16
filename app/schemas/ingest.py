@@ -25,6 +25,24 @@ class TraceBatchIngestResponse(BaseModel):
     count: int
 
 
+class EvaluationResponse(BaseModel):
+    clarity: float | None = None
+    specificity: float | None = None
+    is_off_topic: bool | None = None
+    completeness: float | None = None
+    coherence: float | None = None
+    helpfulness: float | None = None
+    is_deflection: bool | None = None
+    overall_score: float | None = None
+    evaluation_confidence: float | None = None
+    reasoning_summary: str | None = None
+    disagreement_claims: list[dict] | None = None
+    stage_1_reasoning: str | None = None
+    model_used: str | None = None
+    prompt_version: str | None = None
+    rubric_version: str | None = None
+
+
 class TraceResponse(BaseModel):
     id: str
     question: str
@@ -33,6 +51,7 @@ class TraceResponse(BaseModel):
     metadata: dict | None = None
     status: str
     created_at: datetime
+    evaluation: EvaluationResponse | None = None
 
 
 class TraceListResponse(BaseModel):

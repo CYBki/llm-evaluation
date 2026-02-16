@@ -5,13 +5,14 @@ from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.trace import Trace
 from app.models.user import User
-from app.schemas.ingest import TraceListResponse, TraceResponse
+from app.schemas.ingest import EvaluationResponse, TraceListResponse, TraceResponse
 from app.services.ingest_service import get_trace_by_id, list_traces
 
 router = APIRouter()
 
 
 def _to_trace_response(trace: Trace) -> TraceResponse:
+    evaluation = trace.evaluation_result
     return TraceResponse(
         id=str(trace.id),
         question=trace.question,
@@ -20,6 +21,27 @@ def _to_trace_response(trace: Trace) -> TraceResponse:
         metadata=trace.meta,
         status=trace.status,
         created_at=trace.created_at,
+        evaluation=(
+            EvaluationResponse(
+                clarity=evaluation.clarity,
+                specificity=evaluation.specificity,
+                is_off_topic=evaluation.is_off_topic,
+                completeness=evaluation.completeness,
+                coherence=evaluation.coherence,
+                helpfulness=evaluation.helpfulness,
+                is_deflection=evaluation.is_deflection,
+                overall_score=evaluation.overall_score,
+                evaluation_confidence=evaluation.evaluation_confidence,
+                reasoning_summary=evaluation.reasoning_summary,
+                disagreement_claims=evaluation.disagreement_claims,
+                stage_1_reasoning=evaluation.stage_1_reasoning,
+                model_used=evaluation.model_used,
+                prompt_version=evaluation.prompt_version,
+                rubric_version=evaluation.rubric_version,
+            )
+            if evaluation
+            else None
+        ),
     )
 
 

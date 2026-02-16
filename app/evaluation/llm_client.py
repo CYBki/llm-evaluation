@@ -34,7 +34,9 @@ class OpenAILLMClient:
         model: str,
         system_prompt: str,
         user_prompt: str,
-        temperature: float = 0.0,
+        max_completion_tokens: int = 512,
+        response_format_json: bool = False,
+        json_schema: dict | None = None,
     ) -> LLMResponse:
         if not self.api_key:
             raise LLMClientError("OPENAI_API_KEY not configured")
@@ -46,12 +48,19 @@ class OpenAILLMClient:
         }
         payload = {
             "model": model,
-            "temperature": temperature,
+            "max_completion_tokens": max_completion_tokens,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
         }
+        if json_schema:
+            payload["response_format"] = {
+                "type": "json_schema",
+                "json_schema": json_schema,
+            }
+        elif response_format_json:
+            payload["response_format"] = {"type": "json_object"}
 
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             resp = await client.post(url, headers=headers, json=payload)

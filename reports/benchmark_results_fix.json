@@ -1,0 +1,300 @@
+{
+  "summary": {
+    "sent": 10,
+    "completed": 10,
+    "failed": 0,
+    "timeout": 0
+  },
+  "results": [
+    {
+      "trace_id": "a8bec03d-04ad-4073-8ae9-f7d01d4b3736",
+      "status": "completed",
+      "question": "In what country is Normandy located?",
+      "metadata": {
+        "benchmark_source": "squad_v2",
+        "example_id": "56ddde6b9a695914005b9628"
+      },
+      "evaluation": {
+        "clarity": 1.0,
+        "specificity": 1.0,
+        "is_off_topic": false,
+        "completeness": 1.0,
+        "coherence": 1.0,
+        "helpfulness": 1.0,
+        "is_deflection": false,
+        "overall_score": 1.0,
+        "evaluation_confidence": 0.9,
+        "reasoning_summary": "Soru açık ve tekdüze; cevap eksiksiz, tutarlı ve kullanıcıya doğrudan yardımcı. İddia ('Normandy is located in France') bağlamda açıkça desteklenmiş; desteklenmeyen iddia yok.",
+        "disagreement_claims": [],
+        "stage_1_reasoning": "### CLARITY — **1.0**\nSoru tek anlamlı ve açık: “Normandiya hangi ülkededir?” Net bir coğrafi bilgi istiyor.\n\n### SPECIFICITY — **1.0**\nSomut ve dar kapsamlı: tek bir ülke adıyla ölçülebilir şekilde cevaplanabilir.\n\n### IS_OFF_TOPIC — **false**\nSoru genel bilgi/coğrafya kapsamında ve verilen bağlamla da doğrudan ilgili.\n\n### COMPLETENESS — **1.0**\nCevap sorunun istediği bilgiyi eksiksiz veriyor: ülke adı.\n\n### COHERENCE — **1.0**\nCevap tek kelime ama tutarlı ve çelişkisiz.\n\n### HELPFULNESS — **1.0**\nKullanıcının hedefini doğrudan karşılıyor; ek açıklama gerekmiyor.\n\n### IS_DEFLECTION — **false**\nSavuşturna yok; doğrudan yanıt var.\n\n---\n\n## HALLUCINATION / CLAIM ANALİZİ\nCevaptaki önemli iddia(lar):\n\n1) **Claim:** “Normandy is located in France.”  \n- **Değerlendirme:** **supported**  \n- **Gerekçe:** Bağlamda “Normandy, a region in France” ifadesi açıkça geçiyor.\n\n### Desteklenmeyen claimler\n- **Yok.**",
+        "model_used": "gpt-5.2 + gpt-5-mini",
+        "prompt_version": "v1.0",
+        "rubric_version": "v1.0"
+      }
+    },
+    {
+      "trace_id": "d8c1150a-8d6e-4cf9-bf0f-87452ba9cfb5",
+      "status": "completed",
+      "question": "When were the Normans in Normandy?",
+      "metadata": {
+        "benchmark_source": "squad_v2",
+        "example_id": "56ddde6b9a695914005b9629"
+      },
+      "evaluation": {
+        "clarity": 1.0,
+        "specificity": 0.7,
+        "is_off_topic": false,
+        "completeness": 0.7,
+        "coherence": 1.0,
+        "helpfulness": 0.7,
+        "is_deflection": false,
+        "overall_score": 0.82,
+        "evaluation_confidence": 0.8,
+        "reasoning_summary": "Cevap net, tutarlı ve büyük ölçüde tam: 10. ve 11. yüzyılları veriyor. Spesifiklik bir miktar belirsiz (\"in Normandy\" farklı yorumlara açık) ve bağlamdaki ek nüanslar (ör. 10. yy başı) cevaba eklenebilirdi. Cevaptaki başlıca olgusal iddia bağlam tarafından destekleniyor; halüsinasyon yok.",
+        "disagreement_claims": [],
+        "stage_1_reasoning": "### CLARITY — **1.0**\nSoru net ve tek anlamlı: “Normanlar Normandy’de ne zaman vardı?” Zaman aralığı istiyor.\n\n### SPECIFICITY — **0.7**\nKapsam makul derecede spesifik (yer + halk + zaman), ancak “in Normandy” ifadesi “yerleşmeleri/iktidarları/varlıkları” gibi farklı yorumlara açık olabilir; yine de pratikte tarih aralığı sorusu.\n\n### IS_OFF_TOPIC — **false**\nTarihsel bilgi sorusu ve verilen bağlam doğrudan ilgili.\n\n### COMPLETENESS — **0.7**\nCevap temel talebi karşılıyor (10. ve 11. yüzyıllar). Ancak bağlam “10th and 11th centuries gave their name to Normandy” diyor; soru “ne zaman Normandy’deydiler” olduğundan daha net bir formülasyon (ör. 10–11. yy boyunca) veya bağlamdaki ek nüans (10. yy’ın ilk yarısında kimlik oluşumu) eklenebilirdi.\n\n### COHERENCE — **1.0**\nCevap kısa ama tutarlı ve çelişkisiz.\n\n### HELPFULNESS — **0.7**\nDoğrudan zaman aralığı veriyor, kullanıcı hedefini büyük ölçüde çözüyor. Ancak aşırı kısa; bağlamın sunduğu küçük ayrıntılar (özellikle 10. yy’ın ilk yarısı vurgusu) eklenebilirdi.\n\n### IS_DEFLECTION — **false**\nSavusturma yok; doğrudan cevap veriyor.\n\n---\n\n## HALLUCINATION / CLAIM ANALİZİ (Cevaptaki iddialar)\n1) **“Normanlar Normandy’de 10. ve 11. yüzyıllardaydı.”**  \n- Değerlendirme: **supported**  \n- Gerekçe: Bağlam açıkça “The Normans … were the people who in the 10th and 11th centuries gave their name to Normandy” diyor.\n\n### Desteklenmeyen / sorunlu claim\n- **Yok.** Cevaptaki tek önemli olgusal iddia bağlam tarafından destekleniyor.",
+        "model_used": "gpt-5.2 + gpt-5-mini",
+        "prompt_version": "v1.0",
+        "rubric_version": "v1.0"
+      }
+    },
+    {
+      "trace_id": "340f6a85-7cd3-4cc0-b3af-57da4a6770f4",
+      "status": "completed",
+      "question": "From which countries did the Norse originate?",
+      "metadata": {
+        "benchmark_source": "squad_v2",
+        "example_id": "56ddde6b9a695914005b962a"
+      },
+      "evaluation": {
+        "clarity": 1.0,
+        "specificity": 1.0,
+        "is_off_topic": false,
+        "completeness": 1.0,
+        "coherence": 1.0,
+        "helpfulness": 0.7,
+        "is_deflection": false,
+        "overall_score": 0.94,
+        "evaluation_confidence": 0.9,
+        "reasoning_summary": "Cevap bağlama tamamen uygun: net, belirli, eksiksiz ve çelişkisiz. Yardımcı puanı biraz düşüren nokta, 'Norse' teriminin genel kullanımda daha geniş (İskandinavya, ör. İsveç) anlamına gelebileceği uyarısıdır. Bağlamsal olarak verilen tüm iddialar destekleniyor.",
+        "disagreement_claims": [
+          {
+            "reasoning": "Bağlam açıkça Denmark'i kaynak olarak listeliyor; bu yüzden iddia destekleniyor.",
+            "answer_quote": "Norse originated from Denmark",
+            "context_quote": "raiders and pirates from Denmark, Iceland and Norway",
+            "disagreement_type": "agreement",
+            "context_quote_type": "factual claim"
+          },
+          {
+            "reasoning": "Bağlam açıkça Iceland'i kaynak olarak listeliyor; bu yüzden iddia destekleniyor.",
+            "answer_quote": "Norse originated from Iceland",
+            "context_quote": "raiders and pirates from Denmark, Iceland and Norway",
+            "disagreement_type": "agreement",
+            "context_quote_type": "factual claim"
+          },
+          {
+            "reasoning": "Bağlam açıkça Norway'i kaynak olarak listeliyor; bu yüzden iddia destekleniyor.",
+            "answer_quote": "Norse originated from Norway",
+            "context_quote": "raiders and pirates from Denmark, Iceland and Norway",
+            "disagreement_type": "agreement",
+            "context_quote_type": "factual claim"
+          }
+        ],
+        "stage_1_reasoning": "### CLARITY — **1.0**\nSoru (“From which countries did the Norse originate?”) net, tek anlamlı ve kolay anlaşılır.\n\n### SPECIFICITY — **1.0**\nBelirli bir bilgi istiyor: “Norse”un hangi ülkelerden geldiği. Kapsam dar ve ölçülebilir.\n\n### IS_OFF_TOPIC — **false**\nSoru tarih/etnisite kökeniyle ilgili ve verilen bağlam (Norse raiders from X) bunu doğrudan kapsıyor.\n\n### COMPLETENESS — **1.0**\nCevap, bağlamın verdiği ülkeleri eksiksiz listeliyor: Denmark, Iceland, Norway.\n\n### COHERENCE — **1.0**\nCevap kısa ama mantıklı ve çelişkisiz bir liste.\n\n### HELPFULNESS — **0.7**\nSoruyu doğrudan yanıtlıyor; ancak genel tarih bilgisinde “Norse” daha geniş “İskandinavya” (özellikle Norveç, Danimarka, İsveç) diye de ele alınabildiğinden, cevap bağlama göre doğru olsa da genel kullanım için potansiyel eksik/yanıltıcı olabilir. (Bu yorum genel bilgiye dair; bağlam-içi değerlendirmede cevap uygun.)\n\n### IS_DEFLECTION — **false**\nSavuşma yok; doğrudan yanıt veriyor.\n\n---\n\n## HALLUCINATION / CLAIM ANALİZİ\nCevaptaki önemli olgusal iddialar:\n\n1) **“Norse originated from Denmark”** → **supported**  \nBağlam: “raiders and pirates from **Denmark**, Iceland and Norway…”\n\n2) **“Norse originated from Iceland”** → **supported**  \nBağlam aynı cümlede Iceland geçiyor.\n\n3) **“Norse originated from Norway”** → **supported**  \nBağlam aynı cümlede Norway geçiyor.\n\n### Desteklenmeyen / sorunlu claimler\n- **Yok.** Cevaptaki tüm claimler verilen bağlam tarafından destekleniyor.",
+        "model_used": "gpt-5.2 + gpt-5-mini",
+        "prompt_version": "v1.0",
+        "rubric_version": "v1.0"
+      }
+    },
+    {
+      "trace_id": "57e48259-ad35-4363-bceb-ee14d50aba56",
+      "status": "completed",
+      "question": "Who was the Norse leader?",
+      "metadata": {
+        "benchmark_source": "squad_v2",
+        "example_id": "56ddde6b9a695914005b962b"
+      },
+      "evaluation": {
+        "clarity": 1.0,
+        "specificity": 0.7,
+        "is_off_topic": false,
+        "completeness": 1.0,
+        "coherence": 1.0,
+        "helpfulness": 0.7,
+        "is_deflection": false,
+        "overall_score": 0.88,
+        "evaluation_confidence": 0.9,
+        "reasoning_summary": "Soru çok net ve bağlamda Rollo açıkça bahsedildiği için cevap doğru ve doğrudan. Cevap tutarlı ve eksiksiz; yalnızca ek bağlam sağlanmaması nedeniyle helpfulness orta düzeyde.",
+        "disagreement_claims": [],
+        "stage_1_reasoning": "### CLARITY — **1.0**\nSoru çok net: “Norse leader kimdi?” Tek bir varlığa işaret ediyor ve bağlamda da “under their leader Rollo” ifadesi geçiyor.\n\n### SPECIFICITY — **0.7**\nKısa ve spesifik bir soru; ancak hangi bağlam/olay (Normanlar mı, başka bir Norse grup mu?) belirtilmediği için az da olsa belirsizlik var. Verilen bağlam Normanlar ve Rollo’yu işaret ediyor.\n\n### IS_OFF_TOPIC — **false**\nSoru, verilen bağlamdaki Normanlar/Norse lideri bilgisini hedefliyor.\n\n### COMPLETENESS — **1.0**\nCevap tek isim istiyor ve “Rollo” bunu doğrudan karşılıyor.\n\n### COHERENCE — **1.0**\nCevap tutarlı ve çelişki yok (tek kelimelik doğru yanıt).\n\n### HELPFULNESS — **0.7**\nDoğru ve hedefe yönelik, ancak kullanıcıya ek bağlam (ör. “Normanların lideri”) eklenmediği için minimal düzeyde. Yine de soru formatına uygun.\n\n### IS_DEFLECTION — **false**\nSavuşma yok; doğrudan yanıt var.\n\n---\n\n## HALLUCINATION / CLAIM ANALİZİ\nCevaptaki önemli factual claim(ler):\n\n1) **“Norse leader = Rollo”**  \n- Durum: **supported**  \n- Gerekçe: Bağlamda açıkça “Norse … raiders … who, **under their leader Rollo**, …” deniyor.\n\n### Desteklenmeyen / uydurma claim\n- **Yok.** Cevap bağlam tarafından doğrudan destekleniyor.",
+        "model_used": "gpt-5.2 + gpt-5-mini",
+        "prompt_version": "v1.0",
+        "rubric_version": "v1.0"
+      }
+    },
+    {
+      "trace_id": "6bec50ca-bcfb-437f-ab84-224942573115",
+      "status": "completed",
+      "question": "What century did the Normans first gain their separate identity?",
+      "metadata": {
+        "benchmark_source": "squad_v2",
+        "example_id": "56ddde6b9a695914005b962c"
+      },
+      "evaluation": {
+        "clarity": 1.0,
+        "specificity": 1.0,
+        "is_off_topic": false,
+        "completeness": 1.0,
+        "coherence": 1.0,
+        "helpfulness": 0.7,
+        "is_deflection": false,
+        "overall_score": 0.94,
+        "evaluation_confidence": 0.9,
+        "reasoning_summary": "Cevap açık, ölçülebilir ve eksiksiz; Normandların ayrı kimliklerini 10. yüzyılda kazandığı bağlam tarafından destekleniyor. Küçük bir iyileştirme olarak bağlamdaki \"ilk yarı\" ayrıntısının da belirtilmesi daha faydalı olurdu.",
+        "disagreement_claims": [],
+        "stage_1_reasoning": "### CLARITY — **1.0**\nSoru tek anlamlı ve açık: Normandların “ayrı kimliklerini” ilk kazandıkları yüzyılı soruyor.\n\n### SPECIFICITY — **1.0**\nTek, ölçülebilir bir bilgi istiyor (hangi yüzyıl). Kapsam dar ve net.\n\n### IS_OFF_TOPIC — **false**\nTarihsel bir bilgi sorusu; verilen bağlam da Normandların kimliğinin ortaya çıkışıyla ilgili.\n\n### COMPLETENESS — **1.0**\nCevap doğrudan istenen formatta ve sorunun tüm talebini karşılıyor (“hangi yüzyıl?” → “10th century”).\n\n### COHERENCE — **1.0**\nCevap kısa ama çelişkisiz ve anlaşılır.\n\n### HELPFULNESS — **0.7**\nDoğru ve doğrudan, ancak bağlam “first half of the 10th century” dediği için “10th century (özellikle ilk yarısı)” gibi küçük bir netleştirme daha faydalı olabilirdi.\n\n### IS_DEFLECTION — **false**\nSavuşma yok; cevap verme niyeti ve içerik var.\n\n---\n\n## HALLUCINATION / CLAIM ANALİZİ\n**Cevaptaki önemli iddia(lar):**\n1) **“Normanlar ilk kez ayrı kimliklerini 10. yüzyılda kazandı.”**  \n- Değerlendirme: **supported**  \n- Gerekçe: Bağlam: “The distinct cultural and ethnic identity of the Normans emerged initially in the first half of the 10th century…”\n\n### Desteklenmeyen / sorunlu claimler\n- **Yok.** (Cevap bağlam tarafından destekleniyor; sadece bağlamdaki “ilk yarı” ayrıntısı cevapta özetlenmiş.)",
+        "model_used": "gpt-5.2 + gpt-5-mini",
+        "prompt_version": "v1.0",
+        "rubric_version": "v1.0"
+      }
+    },
+    {
+      "trace_id": "fe5387ce-85c5-4734-94eb-67abc30ea7ca",
+      "status": "completed",
+      "question": "Who was the duke in the battle of Hastings?",
+      "metadata": {
+        "benchmark_source": "squad_v2",
+        "example_id": "56dddf4066d3e219004dad5f"
+      },
+      "evaluation": {
+        "clarity": 1.0,
+        "specificity": 1.0,
+        "is_off_topic": false,
+        "completeness": 1.0,
+        "coherence": 1.0,
+        "helpfulness": 1.0,
+        "is_deflection": false,
+        "overall_score": 1.0,
+        "evaluation_confidence": 0.9,
+        "reasoning_summary": "Cevap net ve tek bir isim veriyor; bağlam William the Conqueror olduğunu destekliyor. Hiçbir uydurma veya çelişki yok, dolayısıyla tam puan verildi.",
+        "disagreement_claims": [],
+        "stage_1_reasoning": "### CLARITY — **1.0**\nSoru net ve tek anlamlı: “Hastings Savaşı’ndaki dük kimdi?” şeklinde açıkça bir kişiyi soruyor.\n\n### SPECIFICITY — **1.0**\nBelirli bir olaya (1066 Battle of Hastings) ve belirli bir role (duke) odaklanıyor; ölçülebilir/yanıtı tekil.\n\n### IS_OFF_TOPIC — **false**\nTarihsel bir bilgi sorusu; verilen bağlam da Normanlar ve Hastings’ten bahsediyor, kapsam dahilinde.\n\n### COMPLETENESS — **1.0**\nCevap tek bir isim veriyor ve soru “kimdi?” formatında olduğu için ek ayrıntı gerektirmeden talebi karşılıyor.\n\n### COHERENCE — **1.0**\nCevap kısa ama tutarlı; çelişki veya anlam bozukluğu yok.\n\n### HELPFULNESS — **1.0**\nKullanıcının hedefi (dükün kim olduğunu öğrenmek) doğrudan karşılanıyor.\n\n### IS_DEFLECTION — **false**\nSavuşma yok; doğrudan yanıt var.\n\n---\n\n## HALLUCINATION / CLAIM ANALİZİ\nCevaptaki önemli factual claim(ler):\n\n1) **Claim:** “Battle of Hastings’teki dük William the Conqueror’dur.”  \n- **Değerlendirme:** **supported**  \n- **Gerekçe (bağlam desteği):** Bağlamda “an expedition on behalf of their duke, **William the Conqueror**, led to the Norman conquest of England at the **Battle of Hastings** in 1066” deniyor. Bu, Hastings bağlamında “dük”ün William the Conqueror olduğunu doğrudan destekliyor.\n\n### Desteklenmeyen / uydurma claim\n- **Yok.** Cevap bağlam tarafından destekleniyor.\n\n--- \n\n## Skor Özeti\n- **Clarity:** 1.0  \n- **Specificity:** 1.0  \n- **Is_Off_Topic:** false  \n- **Completeness:** 1.0  \n- **Coherence:** 1.0  \n- **Helpfulness:** 1.0  \n- **Is_Deflection:** false",
+        "model_used": "gpt-5.2 + gpt-5-mini",
+        "prompt_version": "v1.0",
+        "rubric_version": "v1.0"
+      }
+    },
+    {
+      "trace_id": "7e041b25-4ca3-49a7-a03a-e1f0d52ab88f",
+      "status": "completed",
+      "question": "Who ruled the duchy of Normandy",
+      "metadata": {
+        "benchmark_source": "squad_v2",
+        "example_id": "56dddf4066d3e219004dad60"
+      },
+      "evaluation": {
+        "clarity": 0.0,
+        "specificity": 0.0,
+        "is_off_topic": true,
+        "completeness": 0.0,
+        "coherence": 0.0,
+        "helpfulness": 0.0,
+        "is_deflection": false,
+        "overall_score": 0.0,
+        "evaluation_confidence": 0.5,
+        "reasoning_summary": "Girdi metni boş olduğu için değerlendirme yapılamıyor.",
+        "disagreement_claims": [],
+        "stage_1_reasoning": "",
+        "model_used": "gpt-5.2 + gpt-5-mini",
+        "prompt_version": "v1.0",
+        "rubric_version": "v1.0"
+      }
+    },
+    {
+      "trace_id": "d1e035fd-ba6b-4655-8f36-d659076ddb67",
+      "status": "completed",
+      "question": "What religion were the Normans",
+      "metadata": {
+        "benchmark_source": "squad_v2",
+        "example_id": "56dddf4066d3e219004dad61"
+      },
+      "evaluation": {
+        "clarity": 1.0,
+        "specificity": 0.7,
+        "is_off_topic": false,
+        "completeness": 1.0,
+        "coherence": 1.0,
+        "helpfulness": 0.7,
+        "is_deflection": false,
+        "overall_score": 0.88,
+        "evaluation_confidence": 0.85,
+        "reasoning_summary": "Soru net; cevap doğrudan 'Catholic' diyerek talebi karşılıyor. Bağlam 'becoming exponents of the Catholic orthodoxy into which they assimilated' ifadesiyle cevabı destekliyor. Spesifiklik orta çünkü dönem/coğrafya belirtilmemiş; bağlama dayalı nüanslar (asimile olmaları / Katolik ortodoksluğu savunmaları) daha faydalı olurdu.",
+        "disagreement_claims": [],
+        "stage_1_reasoning": "### CLARITY — **1.0**\nSoru (“What religion were the Normans”) net, tek anlamlı ve kolay anlaşılır.\n\n### SPECIFICITY — **0.7**\nTek bir bilgi istiyor (Normanların dini) ve cevaplanabilir; ancak “hangi dönem/hangi coğrafya” gibi ayrıntılar verilmediği için bir miktar genelleme içeriyor.\n\n### IS_OFF_TOPIC — **false**\nSoru tarih/din bilgisi kapsamında; verilen bağlam da Normanlar hakkında.\n\n### COMPLETENESS — **1.0**\nSoru tek talep içeriyor ve cevap (“Catholic”) doğrudan bunu karşılıyor.\n\n### COHERENCE — **1.0**\nCevap kısa ama tutarlı; çelişki yok.\n\n### HELPFULNESS — **0.7**\nDoğrudan yanıt veriyor; ancak bağlam “Christian piety” ve “Catholic orthodoxy”ye asimilasyonu vurguladığı için daha doğru/yardımcı bir ifade “Katolik Hristiyanlığa asimile oldular/ Katolik ortodoksluğun savunucuları oldular” gibi bağlama dayalı nüans içerebilirdi. Yine de temel hedefi karşılıyor.\n\n### IS_DEFLECTION — **false**\nSavuşma yok; cevap verme niyeti ve içerik var.\n\n---\n\n## HALLUCINATION / CLAIM ANALİZİ\nÖnemli iddia(lar) ve bağlam desteği:\n\n1) **Claim:** “Normanlar Katolikti (Catholic).”  \n**Durum:** **supported**  \n**Gerekçe:** Bağlamda “becoming exponents of the Catholic orthodoxy into which they assimilated” ifadesi Normanların Katolik ortodoksluğa asimile olup onu benimsediğini destekliyor.\n\n### Desteklenmeyen / uydurma claimler\n- **Yok.** (Verilen tek iddia bağlam tarafından destekleniyor.)",
+        "model_used": "gpt-5.2 + gpt-5-mini",
+        "prompt_version": "v1.0",
+        "rubric_version": "v1.0"
+      }
+    },
+    {
+      "trace_id": "484ba19c-5d8c-4ff7-8693-01c5ba277180",
+      "status": "completed",
+      "question": "What is the original meaning of the word Norman?",
+      "metadata": {
+        "benchmark_source": "squad_v2",
+        "example_id": "56dde0379a695914005b9636"
+      },
+      "evaluation": {
+        "clarity": 1.0,
+        "specificity": 1.0,
+        "is_off_topic": false,
+        "completeness": 0.7,
+        "coherence": 1.0,
+        "helpfulness": 0.7,
+        "is_deflection": false,
+        "overall_score": 0.88,
+        "evaluation_confidence": 0.9,
+        "reasoning_summary": "Cevap açık ve ölçülebilir hedefe odaklanmış; 'Viking' ifadesi bağlamla uyumlu ve kısmen destekleniyor ancak etimolojik olarak daha temel karşılık 'Northman/Norseman' olduğu için eksik kalıyor. Tutarsızlık veya uydurma iddia yok.",
+        "disagreement_claims": [],
+        "stage_1_reasoning": "### CLARITY — **1.0**\nSoru net: “Norman” kelimesinin *orijinal anlamı* soruluyor; tek bir hedef var ve anlaşılır.\n\n### SPECIFICITY — **1.0**\nDar ve ölçülebilir: tek bir kelimenin etimolojik “ilk/orijinal anlamı” isteniyor.\n\n### IS_OFF_TOPIC — **false**\nDil/etimoloji sorusu ve verilen bağlamla doğrudan ilgili.\n\n### COMPLETENESS — **0.7**\nCevap (Viking) çekirdekte doğru yönde; ancak bağlam “Northman / Norseman, Viking” açıklamasını veriyor. “Viking” tek kelimeyle verildiği için “Northman/Norseman” nüansı ve etimolojik karşılığı eksik.\n\n### COHERENCE — **1.0**\nCevap tek kelime olsa da çelişkisiz ve anlaşılır.\n\n### HELPFULNESS — **0.7**\nKullanıcıya hızlı bir karşılık veriyor, fakat bağlamın verdiği daha doğru/temel anlam (“Northman/Norseman”) yerine daha gevşek bir eşanlamlı (“Viking”) kullanıyor; bu da etimoloji açısından biraz yüzeysel.\n\n### IS_DEFLECTION — **false**\nSavuşma yok; doğrudan cevap verme niyeti var.\n\n---\n\n## HALLUCINATION / CLAIM ANALİZİ\nCevaptaki önemli claim(ler):\n\n1) **“Norman’ın orijinal anlamı ‘Viking’dir.”**  \n- Değerlendirme: **supported (kısmen)**  \n- Gerekçe: Bağlam, “Nortmann / Norðmaðr … to mean ‘Norseman, Viking’” diyor. Yani “Viking” anlam alanında var ve destekleniyor. Ancak “orijinal meaning” için daha temel karşılık **“Northman / Norseman”** olduğundan cevap tam isabetli değil ama bağlamla çelişmiyor.\n\n### Desteklenmeyen / uydurma claim\n- **Yok.** (Cevap bağlamda geçen anlamlardan birini seçiyor.)",
+        "model_used": "gpt-5.2 + gpt-5-mini",
+        "prompt_version": "v1.0",
+        "rubric_version": "v1.0"
+      }
+    },
+    {
+      "trace_id": "5d5b392e-54cf-4fbb-81f4-d395551ab198",
+      "status": "completed",
+      "question": "When was the Latin version of the word Norman first recorded?",
+      "metadata": {
+        "benchmark_source": "squad_v2",
+        "example_id": "56dde0379a695914005b9637"
+      },
+      "evaluation": {
+        "clarity": 1.0,
+        "specificity": 1.0,
+        "is_off_topic": false,
+        "completeness": 1.0,
+        "coherence": 1.0,
+        "helpfulness": 1.0,
+        "is_deflection": false,
+        "overall_score": 1.0,
+        "evaluation_confidence": 0.9,
+        "reasoning_summary": "Cevap açık, spesifik ve bağlam tarafından doğrudan destekleniyor; Latinleştirilmiş biçimlerin 9. yüzyılda kaydedildiği ifadesi doğrudan '9th century' cevabını doğruluyor.",
+        "disagreement_claims": [
+          {
+            "reasoning": "Bağlam Latinleştirilmiş biçimlerin (Nortmannus, Normannus, Nordmannus) 9. yüzyılda kaydedildiğini belirtiyor; cevap bu ifadeyle uyumlu.",
+            "answer_quote": "9th century",
+            "context_quote": "Latinized … (recorded in Medieval Latin, 9th century)",
+            "disagreement_type": "agreement",
+            "context_quote_type": "factual claim"
+          }
+        ],
+        "stage_1_reasoning": "### CLARITY — **1.0**\nSoru tek anlamlı: “Norman” kelimesinin **Latin versiyonunun** ilk ne zaman kaydedildiğini soruyor. Zaman ifadesi net.\n\n### SPECIFICITY — **1.0**\nTalep çok somut ve ölçülebilir: “ilk kayıt zamanı” (tarih/ yüzyıl) isteniyor ve hedef terim (Latin versiyonu) belirli.\n\n### IS_OFF_TOPIC — **false**\nSoru dil/etimoloji ve tarihsel kayıtla ilgili; verilen bağlam da doğrudan bunu içeriyor.\n\n### COMPLETENESS — **1.0**\nCevap (“9th century”) sorunun istediği bilgiyi doğrudan veriyor. Ek ayrıntı istenmiyor.\n\n### COHERENCE — **1.0**\nTek parçalık cevap tutarlı ve çelişkisiz.\n\n### HELPFULNESS — **1.0**\nKullanıcının hedefini (ilk kayıt zamanı) doğrudan karşılıyor; bağlamla da uyumlu.\n\n### IS_DEFLECTION — **false**\nSavuşma yok; doğrudan yanıt var.\n\n---\n\n## HALLUCINATION / CLAIM ANALİZİ (önemli factual iddialar)\n1) **Claim:** “Latin version of the word Norman first recorded: 9th century.”  \n   - **Değerlendirme:** **supported**  \n   - **Gerekçe:** Bağlamda “Latinized … (recorded in Medieval Latin, 9th century)” ifadesi açıkça geçiyor ve Latinleştirilmiş biçimlerin (Nortmannus, Normannus, Nordmannus) 9. yüzyılda kaydedildiğini söylüyor.\n\n### Desteklenmeyen / sorunlu claimler\n- **Yok.** Cevap bağlam tarafından destekleniyor.",
+        "model_used": "gpt-5.2 + gpt-5-mini",
+        "prompt_version": "v1.0",
+        "rubric_version": "v1.0"
+      }
+    }
+  ]
+}
