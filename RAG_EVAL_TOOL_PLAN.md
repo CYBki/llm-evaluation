@@ -43,7 +43,7 @@ Kullanicilar kendi RAG sistemlerine 3 satir SDK ekleyerek her soru-cevap-context
 
 Kullanici herhangi bir dataset yuklemez. Gercek kullanimdaki her soru + cevap + context SDK araciligiyla otomatik olarak yakalanir ve iki asamali (two-stage) LLM-as-Judge yontemiyle puanlanir.
 
-Degerlendirme Mimarisi: Rubric-based Chain-of-Thought prompting ile Stage 1 (gpt-4o-mini) her metrik icin puanlama cetvelini (rubric) kullanarak serbest metin muhakeme uretir, Stage 2 (gpt-3.5-turbo) bu muhakemeyi yapilandirilmis JSON skorlara donusturur. Bu sayede daha tutarli puanlama, derin analiz, aciklanabilir sonuclar ve claim bazli dogrulama saglanir.
+Degerlendirme Mimarisi: Rubric-based Chain-of-Thought prompting ile Stage 1 (gpt-5.2) her metrik icin puanlama cetvelini (rubric) kullanarak serbest metin muhakeme uretir, Stage 2 (gpt-5-mini) bu muhakemeyi yapilandirilmis JSON skorlara donusturur. Bu sayede daha tutarli puanlama, derin analiz, aciklanabilir sonuclar ve claim bazli dogrulama saglanir.
 
 ### Gelistirici Entegrasyonu (3 Satir)
 
@@ -91,8 +91,8 @@ Kullanici soru sorar
   ┌──────────────────────────────────────────────────┐
   │  tracker.log(question, answer, contexts)          │
   │    ├─ POST /api/v1/ingest → trace DB'ye yazilir   │
-  │    ├─ Stage 1 (gpt-4o-mini): Rubric-based CoT     │
-  │    ├─ Stage 2 (gpt-3.5-turbo): JSON skorlama      │
+  │    ├─ Stage 1 (gpt-5.2): Rubric-based CoT         │
+  │    ├─ Stage 2 (gpt-5-mini): JSON skorlama         │
   │    └─ 8 metrik + reasoning DB'ye kaydedilir        │
   └──────────────────────────────────────────────────┘
         │
@@ -167,14 +167,14 @@ OpenAI API key hesap bazlidir, model bazli degildir. Tek bir `OPENAI_API_KEY` tu
 Gelistiricinin tek OPENAI_API_KEY'i
   │
   ├─ RAG uygulamasi  → gpt-5 (veya gpt-4o, gpt-4-turbo, vb.)
-  ├─ Bizim eval tool → gpt-4o-mini (Stage 1) + gpt-3.5-turbo (Stage 2)
+  ├─ Bizim eval tool → gpt-5.2 (Stage 1) + gpt-5-mini (Stage 2)
   │
   └─ Hepsi ayni key, ayni hesap, tek fatura
 ```
 
 | Soru | Cevap |
 |---|---|
-| Ekip gpt-5 kullaniyor, eval tool gpt-4o-mini. Ekstra key gerekir mi? | **Hayir.** Ayni key tum modellere erisir |
+| Ekip gpt-5 kullaniyor, eval tool gpt-5.2. Ekstra key gerekir mi? | **Hayir.** Ayni key tum modellere erisir |
 | Farkli modeller farkli fiyatlandirilir mi? | Evet, ama hepsi ayni faturada gorunur |
 | Eval maliyeti ne kadar ekler? | ~$0.00035/trace (gpt-5'e kiyasla ihmal edilebilir) |
 
@@ -230,9 +230,9 @@ Body: { question, answer, contexts }
 
 ---
 
-**Adim 3 — Stage 1: gpt-4o-mini Rubric-based CoT Muhakeme**
+**Adim 3 — Stage 1: gpt-5.2 Rubric-based CoT Muhakeme**
 
-Backend soruyu + cevabi + contexti + rubric'i gpt-4o-mini'ye gonderir:
+Backend soruyu + cevabi + contexti + rubric'i gpt-5.2'ye gonderir:
 
 ```
 [Stage 1 Prompt ozeti]
@@ -251,7 +251,7 @@ Rubric:
   ...
 ```
 
-gpt-4o-mini serbest metin muhakeme uretir:
+gpt-5.2 serbest metin muhakeme uretir:
 
 ```
 [Stage 1 Ciktisi — Serbest metin muhakeme]
@@ -284,9 +284,9 @@ OVERALL: Cevap kismen faydali ama sure bilgisi uydurma.
 
 ---
 
-**Adim 4 — Stage 2: gpt-3.5-turbo JSON Skorlama**
+**Adim 4 — Stage 2: gpt-5-mini JSON Skorlama**
 
-Muhakeme metni gpt-3.5-turbo'ya gonderilir, yapilandirilmis JSON'a donusturulur:
+Muhakeme metni gpt-5-mini'ye gonderilir, yapilandirilmis JSON'a donusturulur:
 
 ```json
 {
@@ -334,7 +334,7 @@ evaluation_results tablosu:
   reasoning_summary: "Cevap dogru yonlendirme yapiyor ancak..."
   disagreement_claims: [{claim: "24 saat", ...}]
   stage_1_reasoning: "CLARITY: Soru kisa, net..."
-  model_used:       "gpt-4o-mini + gpt-3.5-turbo"
+  model_used:       "gpt-5.2 + gpt-5-mini"
   prompt_version:   "v1.0"
   rubric_version:   "v1.0"
 
@@ -392,8 +392,8 @@ Kullanici sorar → RAG cevap uretir → SDK yakalar → Stage 1 muhakeme
 |---|---|---|
 | 1. RAG cevap uretir | Retriever + Generator | ~1-2 sn (RAG'in islemi) |
 | 2. SDK trace gonderir | HTTP POST /ingest | ~50 ms |
-| 3. Stage 1 muhakeme | gpt-4o-mini rubric CoT | ~2-3 sn |
-| 4. Stage 2 JSON | gpt-3.5-turbo formatlama | ~1 sn |
+| 3. Stage 1 muhakeme | gpt-5.2 rubric CoT | ~2-3 sn |
+| 4. Stage 2 JSON | gpt-5-mini formatlama | ~1 sn |
 | 5. DB kayit | Skorlar + reasoning yazilir | ~10 ms |
 | 6. Dashboard | Kullanici sonucu gorur | anlik |
 
@@ -406,7 +406,7 @@ Kullanici sorar → RAG cevap uretir → SDK yakalar → Stage 1 muhakeme
 | Backend | FastAPI (Python 3.11+) |
 | Veritabani | PostgreSQL 15, SQLAlchemy 2.0, Alembic |
 | Validation | Pydantic v2 |
-| LLM | OpenAI gpt-4o-mini (Stage 1 Rubric-based CoT) + gpt-3.5-turbo (Stage 2 JSON) |
+| LLM | OpenAI gpt-5.2 (Stage 1 Rubric-based CoT) + gpt-5-mini (Stage 2 JSON) |
 | Embeddings | sentence-transformers (Sprint 2) |
 | Async Queue | Redis + Celery (Sprint 2) |
 | Frontend | Next.js 14, Tailwind CSS, shadcn/ui, Recharts (Sprint 4) |
@@ -468,16 +468,16 @@ Gun 3 - Carsamba - LLM Client ve Two-Stage Evaluation Engine
 | Gorev |
 |---|
 | llm_client.py: OpenAI async wrapper, retry, hata yonetimi |
-| Stage 1 prompt: Rubric-based CoT ile her metrik icin puanlama cetvelini kullanarak serbest metin muhakeme ureten prompt (gpt-4o-mini) |
-| Stage 2 prompt: Muhakeme metnini 8 metrik + reasoning + disagreement_claims JSON a donusturen prompt (gpt-3.5-turbo) |
+| Stage 1 prompt: Rubric-based CoT ile her metrik icin puanlama cetvelini kullanarak serbest metin muhakeme ureten prompt (gpt-5.2) |
+| Stage 2 prompt: Muhakeme metnini 8 metrik + reasoning + disagreement_claims JSON a donusturen prompt (gpt-5-mini) |
 | evaluator.py: evaluate_trace() fonksiyonu (iki asamali cagri) |
 | Ingest sonrasi otomatik evaluation, sonucu (skorlar + reasoning) DB ye kaydet |
 | GET /api/v1/traces/{id} evaluation sonucu + reasoning_summary ile birlikte donsun |
 
 Two-Stage Evaluation Akisi:
 ```
-Asama 1: Question + Context + Answer + Rubric → gpt-4o-mini → Rubric-based serbest metin muhakeme
-Asama 2: Muhakeme metni → gpt-3.5-turbo → Yapilandirilmis JSON (skorlar + reasoning + claims)
+Asama 1: Question + Context + Answer + Rubric → gpt-5.2 → Rubric-based serbest metin muhakeme
+Asama 2: Muhakeme metni → gpt-5-mini → Yapilandirilmis JSON (skorlar + reasoning + claims)
 ```
 
 Beklenen cikti: Trace gonder, LLM iki asamada puanlasin, 8 metrik skoru + aciklama donsun.
@@ -508,7 +508,7 @@ Beklenen cikti: Sprint 1 tamamlandi, demo hazir.
 
 ### 4.2 Metrikler
 
-Iki asamali Rubric-based CoT ile tum metrikler puanlanir. Stage 1 (gpt-4o-mini) her metrik icin puanlama cetvelini (rubric) kullanarak serbest metin muhakeme uretir, Stage 2 (gpt-3.5-turbo) bu muhakemeyi yapilandirilmis JSON'a donusturur.
+Iki asamali Rubric-based CoT ile tum metrikler puanlanir. Stage 1 (gpt-5.2) her metrik icin puanlama cetvelini (rubric) kullanarak serbest metin muhakeme uretir, Stage 2 (gpt-5-mini) bu muhakemeyi yapilandirilmis JSON'a donusturur.
 
 | No | Metrik | Tip | Aciklama |
 |---|---|---|---|
@@ -717,7 +717,7 @@ Ek Alanlar (Two-Stage ciktisi):
 - [ ] POST /api/v1/ingest/batch (toplu trace)
 - [ ] GET /api/v1/traces (pagination)
 - [ ] GET /api/v1/traces/{id} (detay + evaluation)
-- [ ] Two-Stage LLM-as-Judge evaluator (Stage 1: gpt-4o-mini Rubric-based CoT, Stage 2: gpt-3.5-turbo JSON skorlama)
+- [ ] Two-Stage LLM-as-Judge evaluator (Stage 1: gpt-5.2 Rubric-based CoT, Stage 2: gpt-5-mini JSON skorlama)
 - [ ] reasoning_summary ve disagreement_claims ciktisi
 - [ ] Rate limiting + basic quota (kullanici bazli gunluk limit)
 - [ ] Unit ve Integration testler
@@ -1192,7 +1192,7 @@ Query parametreleri:
 
 ### Sprint 1 - Temel Metrikler (Two-Stage LLM-as-Judge)
 
-Stage 1 (gpt-4o-mini, Rubric-based CoT) puanlama cetvelini kullanarak serbest metin muhakeme uretir, Stage 2 (gpt-3.5-turbo) yapilandirilmis JSON'a donusturur.
+Stage 1 (gpt-5.2, Rubric-based CoT) puanlama cetvelini kullanarak serbest metin muhakeme uretir, Stage 2 (gpt-5-mini) yapilandirilmis JSON'a donusturur.
 
 | No | Metrik | Tip | Kaynak | Aciklama |
 |---|---|---|---|---|
@@ -1400,20 +1400,20 @@ llm-evaluation/
 
 ## 12. Maliyet Analizi
 
-### OpenAI API Maliyeti (gpt-4o-mini + gpt-3.5-turbo)
+### OpenAI API Maliyeti (gpt-5.2 + gpt-5-mini)
 
 | Model | Kalem | Birim Fiyat | Aciklama |
 |---|---|---|---|
-| gpt-4o-mini | Input tokens | $0.15 / 1M token | Stage 1: Rubric + soru + cevap + context |
-| gpt-4o-mini | Output tokens | $0.60 / 1M token | Stage 1: Rubric-based muhakeme |
-| gpt-3.5-turbo | Input tokens | $0.50 / 1M token | Stage 2: Muhakeme metni |
-| gpt-3.5-turbo | Output tokens | $1.50 / 1M token | Stage 2: JSON skorlama |
+| gpt-5.2 | Input tokens | $0.15 / 1M token | Stage 1: Rubric + soru + cevap + context |
+| gpt-5.2 | Output tokens | $0.60 / 1M token | Stage 1: Rubric-based muhakeme |
+| gpt-5-mini | Input tokens | $0.50 / 1M token | Stage 2: Muhakeme metni |
+| gpt-5-mini | Output tokens | $1.50 / 1M token | Stage 2: JSON skorlama |
 
 Iki asamali Rubric-based CoT degerlendirme:
-- Stage 1 Input: ~900 token (rubric + soru + cevap + context) — gpt-4o-mini
-- Stage 1 Output: ~400 token (rubric-based muhakeme) — gpt-4o-mini
-- Stage 2 Input: ~600 token (muhakeme metni) — gpt-3.5-turbo
-- Stage 2 Output: ~300 token (yapilandirilmis JSON + reasoning + claims) — gpt-3.5-turbo
+- Stage 1 Input: ~900 token (rubric + soru + cevap + context) — gpt-5.2
+- Stage 1 Output: ~400 token (rubric-based muhakeme) — gpt-5.2
+- Stage 2 Input: ~600 token (muhakeme metni) — gpt-5-mini
+- Stage 2 Output: ~300 token (yapilandirilmis JSON + reasoning + claims) — gpt-5-mini
 - Toplam maliyet/trace: ~$0.00035
 
 | Aylik Hacim | Trace/Ay | Tahmini Maliyet |
@@ -1468,7 +1468,7 @@ Faithfulness ve Hallucination icin ek LLM cagrisi:
 - [ ] POST /api/v1/ingest ile tek trace gonderilebiliyor
 - [ ] POST /api/v1/ingest/batch ile toplu trace gonderilebiliyor
 - [ ] Trace gonderildikten sonra two-stage evaluation ile 8 metrik senkron olarak puanlaniyor
-- [ ] Stage 1 (gpt-4o-mini) Rubric-based CoT muhakeme + Stage 2 (gpt-3.5-turbo) yapilandirilmis JSON akisi calisiyor
+- [ ] Stage 1 (gpt-5.2) Rubric-based CoT muhakeme + Stage 2 (gpt-5-mini) yapilandirilmis JSON akisi calisiyor
 - [ ] reasoning_summary ve disagreement_claims evaluation sonucunda donuyor
 - [ ] evaluation_confidence (0.0-1.0) skoru evaluation sonucunda donuyor
 - [ ] Kullanici bazli rate limiting ve gunluk quota uygulanabiliyor

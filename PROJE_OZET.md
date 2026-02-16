@@ -14,8 +14,8 @@ Kullanici RAG Sistemi → SDK (3 satir kod) → API'miz → Two-Stage LLM Puanla
 
 1. Kullanici SDK'yi RAG sistemine entegre eder (3 satir)
 2. Her soru + cevap + context otomatik olarak API'ye gonderilir
-3. **Stage 1**: gpt-4o-mini rubric (puanlama cetveli) kullanarak serbest metin muhakeme uretir (Rubric-based CoT)
-4. **Stage 2**: gpt-3.5-turbo muhakemeyi yapilandirilmis JSON skorlara donusturur
+3. **Stage 1**: gpt-5.2 rubric (puanlama cetveli) kullanarak serbest metin muhakeme uretir (Rubric-based CoT)
+4. **Stage 2**: gpt-5-mini muhakemeyi yapilandirilmis JSON skorlara donusturur
 5. Sonuclar + aciklamalar dashboard'da gorsellenir
 
 **Entegrasyon Ornegi:**
@@ -89,7 +89,7 @@ Sonuc `disagreement_claims` olarak JSON'da doner ve dashboard'da gosterilir.
 | **PostgreSQL** | Veritabani | Guclu JSON destegi, guvenilir, ucretsiz, buyuk veri icin uygun |
 | **SQLAlchemy 2.0** | ORM (DB erisim katmani) | Python'da standart, migration destegi (Alembic), tip guvenligi |
 | **Pydantic v2** | Veri dogrulama | FastAPI ile entegre, otomatik validation, hizli |
-| **OpenAI gpt-4o-mini + gpt-3.5-turbo** | Two-Stage Rubric-based LLM-as-Judge | Stage 1: gpt-4o-mini (rubric + CoT muhakeme), Stage 2: gpt-3.5-turbo (JSON formatlama). ~$0.00035/trace |
+| **OpenAI gpt-5.2 + gpt-5-mini** | Two-Stage Rubric-based LLM-as-Judge | Stage 1: gpt-5.2 (rubric + CoT muhakeme), Stage 2: gpt-5-mini (JSON formatlama). ~$0.00035/trace |
 | **Redis** | Mesaj kuyrugu (Hafta 2) | Celery ile entegre, hizli, hafif, async islem icin ideal |
 | **Celery** | Arka plan islem (Hafta 2) | Async eval, retry, toplu isleme, Python standart cozum |
 | **sentence-transformers** | Embedding (Hafta 2) | answer_relevancy metrigi icin, ucretsiz, yerel calisir |
@@ -112,7 +112,7 @@ Bu hafta projenin temeli atiliyor. Hicbir ozellik olmadan once sistemin ayaga ka
 | **API + Veritabani kurulumu** | FastAPI projesi olusturulur, PostgreSQL baglantisi yapilir, Docker Compose ile ikisi birlikte calisir hale getirilir. User, Trace, EvaluationResult tablolari olusturulur. | Her sey bunun ustune insa edilecek. Veritabani olmadan veri saklayamayiz, API olmadan disariyla konusamayiz. |
 | **Kullanici kaydi + API key** | Kullanici email+sifre ile kayit olur, sistem ona benzersiz bir API key uretir. Bu key SHA-256 ile hashlenerek DB'de saklanir. | Her kullanicinin kendi verisi izole olmali. API key sayesinde kim trace gonderiyor bilinir, yetkisiz erisim engellenir. |
 | **Trace gonderme ve listeleme** | POST /ingest ile tek trace, POST /ingest/batch ile toplu trace gonderilir. GET /traces ile listelenir. Trace = bir soru + cevap + context bilgisi. | Bu projenin ana girdisi trace'dir. Kullanicinin RAG sisteminden gelen her soru + cevap + context bir trace olarak kaydedilir. |
-| **8 metrikle LLM puanlama** | Two-stage Rubric-based CoT evaluation: Stage 1'de gpt-4o-mini her metrik icin puanlama cetvelini (rubric) kullanarak serbest metin muhakeme uretir. Stage 2'de gpt-3.5-turbo bu muhakemeyi yapilandirilmis JSON skorlara + reasoning_summary + disagreement_claims donusturur. | Rubric sayesinde LLM tutarli puanlar verir (0.7 mi 0.8 mi belirsizligi kalkar). Iki adimda ayrı yapmak daha derin analiz ve aciklanabilir sonuc verir. Kullanici neden o puani aldigini gorur. |
+| **8 metrikle LLM puanlama** | Two-stage Rubric-based CoT evaluation: Stage 1'de gpt-5.2 her metrik icin puanlama cetvelini (rubric) kullanarak serbest metin muhakeme uretir. Stage 2'de gpt-5-mini bu muhakemeyi yapilandirilmis JSON skorlara + reasoning_summary + disagreement_claims donusturur. | Rubric sayesinde LLM tutarli puanlar verir (0.7 mi 0.8 mi belirsizligi kalkar). Iki adimda ayrı yapmak daha derin analiz ve aciklanabilir sonuc verir. Kullanici neden o puani aldigini gorur. |
 | **Testler** | Unit test (her servis ayri test edilir) ve integration test (kayit ol -> trace gonder -> puanla -> sonuc kontrol) yazilir. | Kodun dogru calistigindan emin olmamiz lazim. Sonraki haftalarda bir sey bozulursa testler yakalar. |
 
 Hafta sonu: `docker-compose up` ile sistem ayaga kalkiyor, trace gonderiliyor, puanlaniyor.
