@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -63,6 +65,10 @@ def get_trace(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TraceResponse:
+    try:
+        UUID(trace_id)
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid trace ID format")
     trace = get_trace_by_id(db, current_user, trace_id)
     if not trace:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trace not found")

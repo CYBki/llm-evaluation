@@ -11,3 +11,15 @@ class RegisterResponse(BaseModel):
     email: EmailStr
     api_key: str
     api_key_prefix: str
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1)
+
+
+class LoginResponse(BaseModel):
+    user_id: str
+    email: EmailStr
+    api_key_prefix: str
+    message: str = "Login successful. Use your existing API key to authenticate."

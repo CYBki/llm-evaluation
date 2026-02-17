@@ -1,11 +1,28 @@
 import asyncio
+import logging
+from contextlib import contextmanager
+from typing import Generator
 from uuid import UUID
+
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import SessionLocal
 from app.evaluation import evaluate_trace
 from app.models.evaluation import EvaluationResult
 from app.models.trace import Trace
+
+logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _get_db() -> Generator[Session, None, None]:
+    """Scoped session for background / non-request contexts."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 def enqueue_trace_evaluation(trace_id: UUID | str) -> None:
@@ -15,21 +32,25 @@ def enqueue_trace_evaluation(trace_id: UUID | str) -> None:
         from app.tasks.evaluation_tasks import evaluate_trace_task
 
         evaluate_trace_task.delay(trace_id_str)
+        logger.info("Enqueued async evaluation for trace %s", trace_id_str)
         return
 
     evaluate_trace_and_persist(trace_id_str)
 
 
 def evaluate_trace_and_persist(trace_id: str) -> None:
-    db = SessionLocal()
-    try:
+    with _get_db() as db:
         trace = db.query(Trace).filter(Trace.id == trace_id).first()
         if not trace:
+            logger.warning("Trace %s not found for evaluation", trace_id)
             return
 
         try:
-            result = asyncio.run(evaluate_trace(trace.question, trace.answer, trace.contexts))
+            loop = asyncio.new_event_loop()
+            result = loop.run_until_complete(evaluate_trace(trace.question, trace.answer, trace.contexts))
+            loop.close()
         except Exception:
+            logger.exception("Evaluation failed for trace %s", trace_id)
             trace.status = "failed"
             db.add(trace)
             db.commit()
@@ -61,8 +82,7 @@ def evaluate_trace_and_persist(trace_id: str) -> None:
         db.add(evaluation)
         db.add(trace)
         db.commit()
-    finally:
-        db.close()
+        logger.info("Evaluation persisted for trace %s — status=%s", trace_id, trace.status)
 
 
 def _is_successful_result(result: dict) -> bool:

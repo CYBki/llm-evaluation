@@ -4,9 +4,9 @@ from pydantic import BaseModel, Field
 
 
 class TraceCreate(BaseModel):
-    question: str = Field(min_length=1)
-    answer: str = Field(min_length=1)
-    contexts: list[str] = Field(default_factory=list)
+    question: str = Field(min_length=1, max_length=50000)
+    answer: str = Field(min_length=1, max_length=100000)
+    contexts: list[str] | None = None
     metadata: dict | None = None
 
 

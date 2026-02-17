@@ -1,6 +1,6 @@
 services:
   api:
-    image: python:3.11-slim
+    build: .
     working_dir: /app
     volumes:
       - ./:/app
@@ -8,7 +8,7 @@ services:
       EVALUATION_MODE: ${EVALUATION_MODE:-sync}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
-    command: bash -lc "pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    command: bash scripts/start_api.sh --reload
     ports:
       - "8000:8000"
     depends_on:
@@ -18,7 +18,7 @@ services:
         condition: service_started
 
   worker:
-    image: python:3.11-slim
+    build: .
     working_dir: /app
     volumes:
       - ./:/app
@@ -26,7 +26,7 @@ services:
       EVALUATION_MODE: ${EVALUATION_MODE:-sync}
       CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
       CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/1}
-    command: bash -lc "pip install -r requirements.txt && celery -A app.tasks.celery_app.celery_app worker --loglevel=info"
+    command: celery -A app.tasks.celery_app.celery_app worker --loglevel=info
     depends_on:
       db:
         condition: service_healthy

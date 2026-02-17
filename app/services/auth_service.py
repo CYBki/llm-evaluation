@@ -1,10 +1,10 @@
 import hashlib
 import secrets
 
-from fastapi import HTTPException, status
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
+from app.exceptions import DuplicateEmailError
 from app.models.user import User
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
@@ -21,7 +21,7 @@ def _generate_api_key() -> str:
 def create_user(db: Session, email: str, password: str) -> tuple[User, str]:
     existing = db.query(User).filter(User.email == email).first()
     if existing:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+        raise DuplicateEmailError(email)
 
     api_key = _generate_api_key()
     user = User(
@@ -39,3 +39,13 @@ def create_user(db: Session, email: str, password: str) -> tuple[User, str]:
 def get_user_by_api_key(db: Session, api_key: str) -> User | None:
     hashed = _hash_api_key(api_key)
     return db.query(User).filter(User.api_key_hash == hashed, User.is_active.is_(True)).first()
+
+
+def authenticate_user(db: Session, email: str, password: str) -> User | None:
+    """Verify email + password, return User or None."""
+    user = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
+    if not user:
+        return None
+    if not pwd_context.verify(password, user.hashed_password):
+        return None
+    return user

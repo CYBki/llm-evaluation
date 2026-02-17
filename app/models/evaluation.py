@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -27,9 +27,9 @@ class EvaluationResult(Base):
     reasoning_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     disagreement_claims: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
     stage_1_reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
-    raw_response: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    raw_response: Mapped[dict | list | None] = mapped_column(JSONB, nullable=True)
 
-    evaluated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    evaluated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     model_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
     prompt_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
     rubric_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
