@@ -41,6 +41,12 @@ class EvaluationResponse(BaseModel):
     model_used: str | None = None
     prompt_version: str | None = None
     rubric_version: str | None = None
+    answer_relevancy: float | None = None
+    faithfulness: float | None = None
+    hallucination_score: float | None = None
+    citation_check: float | None = None
+    faithfulness_claims: list[dict] | None = None
+    completeness_key_points: list[dict] | None = None
 
 
 class TraceResponse(BaseModel):

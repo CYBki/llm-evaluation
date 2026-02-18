@@ -29,6 +29,14 @@ class EvaluationResult(Base):
     stage_1_reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_response: Mapped[dict | list | None] = mapped_column(JSONB, nullable=True)
 
+    # ── RAG-specific metrics ──
+    answer_relevancy: Mapped[float | None] = mapped_column(Float, nullable=True)
+    faithfulness: Mapped[float | None] = mapped_column(Float, nullable=True)
+    hallucination_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    citation_check: Mapped[float | None] = mapped_column(Float, nullable=True)
+    faithfulness_claims: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
+    completeness_key_points: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
+
     evaluated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     model_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
     prompt_version: Mapped[str | None] = mapped_column(String(50), nullable=True)

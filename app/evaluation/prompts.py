@@ -1,60 +1,49 @@
 RUBRIC_BLOCK = """
-RUBRIC BASLANGIC
+RUBRIC START
 
-CLARITY:
-- 1.0 = Soru net, tek anlamli, kolay anlasilir.
-- 0.7 = Genel olarak anlasilir, bir miktar belirsizlik var.
-- 0.4 = Coklu yoruma acik veya karmasik.
-- 0.0 = Anlamsiz ya da parse edilemez.
+CLARITY (of the ANSWER):
+- 1.0 = Answer is clear, well-structured, easy to understand, no contradictions.
+- 0.7 = Generally understandable, minor ambiguity or slight redundancy.
+- 0.4 = Convoluted, hard to follow, contains contradictory statements, or uses excessive hedging.
+- 0.0 = Nonsensical, unparseable, or riddled with contradictions.
 
-SPECIFICITY:
-- 1.0 = Somut, dar kapsamli, olculebilir.
-- 0.7 = Makul derecede spesifik.
-- 0.4 = Fazla genel.
-- 0.0 = Belirsiz/uygulanamaz.
+SPECIFICITY (of the ANSWER):
+- 1.0 = Answer provides concrete details: names, numbers, dates, specific facts.
+- 0.7 = Reasonably specific with some concrete details.
+- 0.4 = Mostly vague or generic, lacks concrete details (e.g., "a long time ago", "many people").
+- 0.0 = Completely vague, no specific information whatsoever.
 
 IS_OFF_TOPIC:
-- true  = Soru sistem kapsamiyla ilgisiz.
-- false = Soru kapsam dahilinde.
-
-COMPLETENESS:
-- 1.0 = Sorudaki tum talepler eksiksiz karsilanmis.
-- 0.7 = Buyuk kismi karsilanmis, az sayida eksik var.
-- 0.4 = Kismi cevap var, kritik eksikler var.
-- 0.0 = Cevap ilgisiz/bos.
+- true  = Question is irrelevant to the system's scope.
+- false = Question is within scope.
 
 COHERENCE:
-- 1.0 = Akici, mantikli, celiskisiz.
-- 0.7 = Genelde tutarli, kucuk kopukluklar var.
-- 0.4 = Belirgin kopukluk/celiski var.
-- 0.0 = Tutarsiz/anlamsiz.
+- 1.0 = Fluent, logical, no contradictions.
+- 0.7 = Generally coherent, minor disconnects.
+- 0.4 = Notable disconnects or contradictions.
+- 0.0 = Incoherent / nonsensical.
 
 HELPFULNESS:
-- 1.0 = Kullanici hedefini dogrudan cozer, uygulanabilir.
-- 0.7 = Faydali ama eksik/yuzysel.
-- 0.4 = Kismen faydali.
-- 0.0 = Faydasiz/alakasiz.
+- 1.0 = Directly solves the user's goal, actionable.
+- 0.7 = Helpful but incomplete or superficial.
+- 0.4 = Partially helpful.
+- 0.0 = Useless / irrelevant.
 
 IS_DEFLECTION:
-- true  = "bilmiyorum", "yardimci olamam" gibi savusturma var ve bilgi yok.
-- false = Soruyu cevaplama niyeti ve icerik var.
+- true  = Contains deflection ("I don't know", "I can't help") with no substantive information.
+- false = Genuine attempt to answer with content.
 
-HALLUCINATION / CLAIM ANALIZI:
-- supported: Baglam claim'i destekliyor.
-- contradiction: Baglamla celisiyor.
-- missing_info: Baglamda claim'i dogrulayacak bilgi yok.
-- fabricated: Baglamda hic olmayan detay uydurulmus.
-
-RUBRIC BITIS
+RUBRIC END
 """.strip()
 
 
 STAGE_1_SYSTEM_PROMPT = """
-Sen bir RAG cevap kalitesi degerlendirme uzmanisin.
-Asagidaki rubric'e kesinlikle bagli kalarak degerlendir.
-Her metrik icin kisa ama acik muhakeme yaz.
-Skor verirken anchor degerleri (1.0 / 0.7 / 0.4 / 0.0) referans al.
-Claim analizinde her onemli factual iddiayi kontrol et.
+You are an expert RAG answer quality evaluator.
+Strictly follow the rubric below when scoring.
+For each metric, write brief but clear reasoning.
+Use the anchor values (1.0 / 0.7 / 0.4 / 0.0) as reference points when scoring.
+Do NOT perform claim-level fact-checking — that is handled by a separate analytical pipeline.
+Focus only on the rubric dimensions listed.
 """.strip()
 
 # ── Stage 2 strict JSON schema (OpenAI Structured Outputs) ──────────────
@@ -122,53 +111,53 @@ _EXAMPLE_JSON = """{
 }"""
 
 STAGE_2_SYSTEM_PROMPT = f"""
-Sen bir JSON donusturucu yardimcisisin.
-Verilen muhakeme metnini asagidaki ornek formatta tek bir gecerli JSON objesi olarak don.
-Sadece JSON don, baska hicbir sey yazma.
+You are a JSON converter assistant.
+Convert the given reasoning text into a single valid JSON object in the format shown below.
+Output ONLY JSON, nothing else.
 
-Float degerler 0.0 ile 1.0 arasinda olmali.
-Boolean degerler true/false olmali.
-disagreement_claims bos array [] olabilir veya obje iceren array olabilir.
+Float values must be between 0.0 and 1.0.
+Boolean values must be true/false.
+disagreement_claims can be an empty array [] or contain objects.
 
-ORNEK CIKTI:
+EXAMPLE OUTPUT:
 {_EXAMPLE_JSON}
 """.strip()
 
 STAGE_2_REPAIR_SYSTEM_PROMPT = f"""
-Sen bir JSON duzeltme yardimcisisin.
-Verilen hatali/eksik JSON ciktisini asagidaki formata uygun, tek bir gecerli JSON objesine donustur.
-Sadece JSON don, baska hicbir sey yazma.
+You are a JSON repair assistant.
+Convert the given malformed/incomplete JSON output into a single valid JSON object matching the format below.
+Output ONLY JSON, nothing else.
 
-Kurallar:
-- Float alanlar 0.0-1.0 araliginda olsun.
-- Boolean alanlar true/false olsun.
-- Eksik alanlari orijinal muhakemeden cikararak doldur.
-- disagreement_claims her zaman array olsun (bos olabilir).
+Rules:
+- Float fields must be in [0.0, 1.0].
+- Boolean fields must be true/false.
+- Fill in missing fields by extracting from the original reasoning.
+- disagreement_claims must always be an array (may be empty).
 
-BEKLENEN FORMAT:
+EXPECTED FORMAT:
 {_EXAMPLE_JSON}
 """.strip()
 
 
 def build_stage_1_user_prompt(question: str, answer: str, contexts: list[str]) -> str:
-    context_block = "\n".join([f"- {item}" for item in contexts]) if contexts else "- (bos)"
+    context_block = "\n".join([f"- {item}" for item in contexts]) if contexts else "- (empty)"
     return (
         f"{RUBRIC_BLOCK}\n\n"
-        "Soru:\n"
+        "Question:\n"
         f"{question}\n\n"
-        "Cevap:\n"
+        "Answer:\n"
         f"{answer}\n\n"
-        "Baglamlar:\n"
+        "Contexts:\n"
         f"{context_block}\n\n"
-        "Her metrik icin muhakeme yaz, bir skor oner ve desteklenmeyen claimleri belirt."
+        "For each rubric metric, write brief reasoning and propose a score."
     )
 
 
 def build_stage_2_user_prompt(stage_1_reasoning: str) -> str:
     return (
-        "Asagidaki muhakemeyi parse et ve yalnizca JSON don.\n"
-        "Baska hicbir aciklama, markdown veya ek metin yazma.\n\n"
-        "MUHAKEME:\n"
+        "Parse the reasoning below and return ONLY JSON.\n"
+        "Do not write any explanation, markdown, or extra text.\n\n"
+        "REASONING:\n"
         f"{stage_1_reasoning}"
     )
 
@@ -180,14 +169,274 @@ def build_stage_2_repair_user_prompt(
 ) -> str:
     error_block = ""
     if validation_errors:
-        error_block = f"\nDOGRULAMA HATALARI:\n{validation_errors}\n"
+        error_block = f"\nVALIDATION ERRORS:\n{validation_errors}\n"
     return (
-        "Asagida ilk donusum denemesi ve orijinal muhakeme var.\n"
-        "Bu donusum denemesi hatali. Duzelt ve tek bir gecerli JSON objesi don.\n"
-        "Baska hicbir aciklama, markdown veya ek metin yazma.\n"
+        "Below is the first conversion attempt and the original reasoning.\n"
+        "The conversion attempt is invalid. Fix it and return a single valid JSON object.\n"
+        "Do not write any explanation, markdown, or extra text.\n"
         f"{error_block}\n"
-        "ILK DENEME CIKTISI:\n"
+        "FIRST ATTEMPT OUTPUT:\n"
         f"{stage_2_output}\n\n"
-        "ORIJINAL MUHAKEME:\n"
+        "ORIGINAL REASONING:\n"
         f"{stage_1_reasoning}"
+    )
+
+
+# ── RAG Metrics: Faithfulness Claim Extraction ──────────────────────────
+
+FAITHFULNESS_SYSTEM_PROMPT = """
+You are a factual claim verification expert. Your task: extract ALL factual claims from the given answer and verify each against the provided context passages.
+
+Rules:
+- Extract every distinct factual assertion. Split compound sentences into individual claims.
+- Ambiguous or vague claims that cannot be clearly verified should be marked as "not_supported".
+- Opinion statements or subjective assessments are NOT factual claims — skip them.
+- For each claim, assign a verdict:
+  * "supported"     — The context explicitly supports this claim.
+  * "not_supported" — The context contains no information about this claim (neither supports nor contradicts).
+  * "contradicted"  — The context explicitly contradicts this claim.
+- Provide a brief reason for each verdict referencing the relevant context passage.
+- Output ONLY JSON, nothing else.
+
+Example:
+Answer: "Python was created by Guido van Rossum in 1991. It is the fastest programming language."
+Contexts: ["Python is a high-level programming language created by Guido van Rossum, first released in 1991."]
+
+Expected output:
+{"claims": [
+  {"claim": "Python was created by Guido van Rossum", "verdict": "supported", "reason": "Context explicitly states 'created by Guido van Rossum'"},
+  {"claim": "Python was created in 1991", "verdict": "supported", "reason": "Context states 'first released in 1991'"},
+  {"claim": "Python is the fastest programming language", "verdict": "not_supported", "reason": "Context does not mention performance or speed comparisons"}
+]}
+""".strip()
+
+FAITHFULNESS_JSON_SCHEMA = {
+    "name": "faithfulness_result",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "claims": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "claim": {"type": "string"},
+                        "verdict": {
+                            "type": "string",
+                            "enum": ["supported", "not_supported", "contradicted"],
+                        },
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["claim", "verdict", "reason"],
+                    "additionalProperties": False,
+                },
+            }
+        },
+        "required": ["claims"],
+        "additionalProperties": False,
+    },
+}
+
+
+def build_faithfulness_user_prompt(answer: str, contexts: list[str]) -> str:
+    context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
+    return (
+        "ANSWER:\n"
+        f"{answer}\n\n"
+        "CONTEXT PASSAGES:\n"
+        f"{context_block}\n\n"
+        "Extract every factual claim from the answer and verify each against the contexts.\n"
+        "Output ONLY JSON."
+    )
+
+
+# ── RAG Metrics: Citation Check ─────────────────────────────────────────
+
+CITATION_CHECK_SYSTEM_PROMPT = """
+You are a citation verification expert. Your task: verify source citations in the given answer against the provided context passages.
+
+Context passages are numbered starting from [0]. Common citation formats: [1], [2], [Source 1], (see context 1), etc.
+
+For each citation found in the answer:
+1. Determine which context passage index (0-based) the citation claims to reference.
+2. Check if that context index actually exists in the provided passages.
+3. If the index exists, verify whether that passage contains the information being cited.
+
+Verdict rules:
+- "correct": Citation references a valid context index AND that passage supports the cited claim.
+- "incorrect": Citation references a non-existent context index (e.g., [Source 99] when only 3 contexts exist), OR the referenced passage does not contain the cited information.
+
+IMPORTANT: A citation like [Source 99] or [15] is INCORRECT if there are fewer than 100 or 16 context passages, respectively. Always check that the referenced index is within bounds.
+
+If no citations exist, return an empty array.
+Output ONLY JSON, nothing else.
+""".strip()
+
+CITATION_CHECK_JSON_SCHEMA = {
+    "name": "citation_check_result",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "citations": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "citation_text": {"type": "string"},
+                        "referenced_context_index": {"type": "number"},
+                        "verdict": {
+                            "type": "string",
+                            "enum": ["correct", "incorrect"],
+                        },
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["citation_text", "referenced_context_index", "verdict", "reason"],
+                    "additionalProperties": False,
+                },
+            }
+        },
+        "required": ["citations"],
+        "additionalProperties": False,
+    },
+}
+
+
+def build_citation_check_user_prompt(answer: str, contexts: list[str]) -> str:
+    context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
+    return (
+        "ANSWER:\n"
+        f"{answer}\n\n"
+        f"CONTEXT PASSAGES ({len(contexts)} total, indexed 0 to {len(contexts)-1}):\n"
+        f"{context_block}\n\n"
+        "Find and verify all source citations in the answer.\n"
+        "Any citation referencing an index outside 0-{max_idx} is INCORRECT.\n"
+        "If no citations exist, return an empty array. Output ONLY JSON."
+    ).replace("{max_idx}", str(len(contexts) - 1))
+
+
+# ── RAG Metrics: Answer Relevancy (RAGAS Reverse-Question Method) ────────
+
+ANSWER_RELEVANCY_SYSTEM_PROMPT = """
+You are an answer relevancy evaluation expert. Your task:
+1. Decompose the given answer into individual statements (atomic factual or informational claims).
+2. For each statement, determine whether it is RELEVANT to the user's question.
+
+Rules:
+- Extract ALL distinct statements from the answer. A statement is a single piece of information or claim.
+- A statement is "relevant" if it directly addresses, partially addresses, or provides useful context for the question.
+- A statement is "not_relevant" if it is off-topic, tangential, or does not help answer the question.
+- Filler phrases like "Sure, here is the answer" are not_relevant.
+- Provide a brief reason for each classification.
+- Output ONLY JSON, nothing else.
+
+Example:
+Question: "What is the capital of France?"
+Answer: "The capital of France is Paris. Paris has a population of about 2.1 million. The Eiffel Tower was built in 1889. Italy is known for pizza."
+
+Output:
+{
+  "statements": [
+    {"statement": "The capital of France is Paris", "relevant": true, "reason": "Directly answers the question"},
+    {"statement": "Paris has a population of about 2.1 million", "relevant": true, "reason": "Provides relevant context about the capital city"},
+    {"statement": "The Eiffel Tower was built in 1889", "relevant": true, "reason": "Provides context about a landmark in the capital"},
+    {"statement": "Italy is known for pizza", "relevant": false, "reason": "Completely off-topic, unrelated to the question"}
+  ]
+}
+""".strip()
+
+ANSWER_RELEVANCY_JSON_SCHEMA = {
+    "name": "answer_relevancy_result",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "statements": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "statement": {"type": "string"},
+                        "relevant": {"type": "boolean"},
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["statement", "relevant", "reason"],
+                    "additionalProperties": False,
+                },
+            }
+        },
+        "required": ["statements"],
+        "additionalProperties": False,
+    },
+}
+
+
+def build_answer_relevancy_user_prompt(question: str, answer: str) -> str:
+    return (
+        "QUESTION:\n"
+        f"{question}\n\n"
+        "ANSWER:\n"
+        f"{answer}\n\n"
+        "Decompose the answer into statements and classify each as relevant or not_relevant to the question.\n"
+        "Output ONLY JSON."
+    )
+
+
+# ── RAG Metrics: Completeness (Key-Point Extraction + Verification) ──────
+
+COMPLETENESS_SYSTEM_PROMPT = """
+You are a completeness evaluation expert. Your task:
+1. Extract the key information requirements (key points) from the question and contexts.
+2. For each key point, determine whether the answer adequately covers it.
+
+Rules:
+- Extract 2-6 key points depending on question complexity. Simple questions may have 2-3, complex ones up to 6.
+- Each key point should be a distinct, verifiable information requirement.
+- A key point is "covered" if the answer addresses it with relevant, substantive information.
+- A key point is "not_covered" if the answer ignores it or provides no relevant information.
+- A key point is "partially_covered" if the answer touches on it but lacks important details.
+- Output ONLY JSON, nothing else.
+""".strip()
+
+COMPLETENESS_JSON_SCHEMA = {
+    "name": "completeness_result",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "key_points": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "point": {"type": "string"},
+                        "status": {
+                            "type": "string",
+                            "enum": ["covered", "partially_covered", "not_covered"],
+                        },
+                        "evidence": {"type": "string"},
+                    },
+                    "required": ["point", "status", "evidence"],
+                    "additionalProperties": False,
+                },
+            }
+        },
+        "required": ["key_points"],
+        "additionalProperties": False,
+    },
+}
+
+
+def build_completeness_user_prompt(question: str, answer: str, contexts: list[str]) -> str:
+    context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
+    return (
+        "QUESTION:\n"
+        f"{question}\n\n"
+        "ANSWER:\n"
+        f"{answer}\n\n"
+        "CONTEXT PASSAGES:\n"
+        f"{context_block}\n\n"
+        "Extract key points from the question and verify which ones the answer covers.\n"
+        "Output ONLY JSON."
     )

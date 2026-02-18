@@ -1,0 +1,459 @@
+{
+  "timestamp": "2026-02-18T18:20:30",
+  "concurrency": 5,
+  "limit": 5,
+  "elapsed_seconds": 860.3,
+  "sections": {
+    "golden": [
+      {
+        "name": "A1_perfect_copy",
+        "passed": true,
+        "details": "OK",
+        "scores": {
+          "overall_score": 1.0,
+          "faithfulness": 1.0,
+          "hallucination_score": 1.0,
+          "completeness": 1.0,
+          "is_deflection": false
+        }
+      },
+      {
+        "name": "A2_correct_paraphrase",
+        "passed": true,
+        "details": "OK",
+        "scores": {
+          "overall_score": 0.9,
+          "faithfulness": 1.0,
+          "is_off_topic": false
+        }
+      },
+      {
+        "name": "B1_total_fabrication",
+        "passed": true,
+        "details": "OK",
+        "scores": {
+          "faithfulness": 0.0,
+          "hallucination_score": 0.0
+        }
+      },
+      {
+        "name": "B2_mixed_hallucination",
+        "passed": true,
+        "details": "OK",
+        "scores": {
+          "faithfulness": 0.6667
+        }
+      },
+      {
+        "name": "C1_direct_contradiction",
+        "passed": true,
+        "details": "OK",
+        "scores": {
+          "faithfulness": 0.0,
+          "hallucination_score": 0.0
+        }
+      },
+      {
+        "name": "D1_sorry_cant_help",
+        "passed": true,
+        "details": "OK",
+        "scores": {
+          "is_deflection": true,
+          "helpfulness": 0.0
+        }
+      },
+      {
+        "name": "D2_vague_redirect",
+        "passed": true,
+        "details": "OK",
+        "scores": {
+          "is_deflection": true,
+          "helpfulness": 0.4,
+          "completeness": 0.3
+        }
+      },
+      {
+        "name": "E1_incomplete",
+        "passed": true,
+        "details": "OK",
+        "scores": {
+          "completeness": 0.25,
+          "faithfulness": 1.0
+        }
+      },
+      {
+        "name": "F1_empty_answer",
+        "passed": true,
+        "details": "OK",
+        "scores": {
+          "overall_score": 0.0,
+          "completeness": 0.0,
+          "helpfulness": 0.0
+        }
+      },
+      {
+        "name": "F2_no_context",
+        "passed": true,
+        "details": "OK",
+        "scores": {
+          "overall_score": 1.0,
+          "is_off_topic": false
+        }
+      },
+      {
+        "name": "G1_completely_off_topic",
+        "passed": true,
+        "details": "OK",
+        "scores": {
+          "helpfulness": 0.0,
+          "completeness": 0.0
+        }
+      },
+      {
+        "name": "H1_wrong_context",
+        "passed": true,
+        "details": "OK",
+        "scores": {
+          "faithfulness": 0.0
+        }
+      },
+      {
+        "name": "I1_correct_citation",
+        "passed": true,
+        "details": "OK",
+        "scores": {
+          "citation_check": 1.0,
+          "faithfulness": 1.0
+        }
+      }
+    ],
+    "perturbation": [
+      {
+        "name": "perturbation_answer_relevancy",
+        "passed": true,
+        "details": "2/2 pairs correct (100%): ✓ relevancy_inject_irrelevant(orig=1.0→pert=0.3333); ✓ relevancy_off_topic(orig=1.0→pert=0.0)",
+        "scores": {
+          "pass_rate": 100.0,
+          "pairs": [
+            {
+              "name": "relevancy_inject_irrelevant",
+              "metric": "answer_relevancy",
+              "orig_score": 1.0,
+              "pert_score": 0.3333,
+              "status": "PASS",
+              "passed": true
+            },
+            {
+              "name": "relevancy_off_topic",
+              "metric": "answer_relevancy",
+              "orig_score": 1.0,
+              "pert_score": 0.0,
+              "status": "PASS",
+              "passed": true
+            }
+          ]
+        }
+      },
+      {
+        "name": "perturbation_completeness",
+        "passed": true,
+        "details": "2/2 pairs correct (100%): ✓ completeness_remove_details(orig=1.0→pert=0.3); ✓ completeness_partial(orig=1.0→pert=0.3)",
+        "scores": {
+          "pass_rate": 100.0,
+          "pairs": [
+            {
+              "name": "completeness_remove_details",
+              "metric": "completeness",
+              "orig_score": 1.0,
+              "pert_score": 0.3,
+              "status": "PASS",
+              "passed": true
+            },
+            {
+              "name": "completeness_partial",
+              "metric": "completeness",
+              "orig_score": 1.0,
+              "pert_score": 0.3,
+              "status": "PASS",
+              "passed": true
+            }
+          ]
+        }
+      },
+      {
+        "name": "perturbation_clarity",
+        "passed": true,
+        "details": "2/2 pairs correct (100%): ✓ clarity_convoluted(orig=1.0→pert=0.4); ✓ clarity_contradictory(orig=1.0→pert=0.4)",
+        "scores": {
+          "pass_rate": 100.0,
+          "pairs": [
+            {
+              "name": "clarity_convoluted",
+              "metric": "clarity",
+              "orig_score": 1.0,
+              "pert_score": 0.4,
+              "status": "PASS",
+              "passed": true
+            },
+            {
+              "name": "clarity_contradictory",
+              "metric": "clarity",
+              "orig_score": 1.0,
+              "pert_score": 0.4,
+              "status": "PASS",
+              "passed": true
+            }
+          ]
+        }
+      },
+      {
+        "name": "perturbation_specificity",
+        "passed": true,
+        "details": "1/1 pairs correct (100%): ✓ specificity_vague(orig=1.0→pert=0.0)",
+        "scores": {
+          "pass_rate": 100.0,
+          "pairs": [
+            {
+              "name": "specificity_vague",
+              "metric": "specificity",
+              "orig_score": 1.0,
+              "pert_score": 0.0,
+              "status": "PASS",
+              "passed": true
+            }
+          ]
+        }
+      },
+      {
+        "name": "perturbation_citation_check",
+        "passed": true,
+        "details": "1/1 pairs correct (100%): ○ citation_removed(orig=1.0→pert=None); ✓ citation_wrong_refs(orig=0.6667→pert=0.0)",
+        "scores": {
+          "pass_rate": 100.0,
+          "pairs": [
+            {
+              "name": "citation_removed",
+              "metric": "citation_check",
+              "orig_score": 1.0,
+              "pert_score": null,
+              "status": "SKIP",
+              "passed": null
+            },
+            {
+              "name": "citation_wrong_refs",
+              "metric": "citation_check",
+              "orig_score": 0.6667,
+              "pert_score": 0.0,
+              "status": "PASS",
+              "passed": true
+            }
+          ]
+        }
+      }
+    ],
+    "external": [
+      {
+        "name": "ragbench_faithfulness_vs_adherence",
+        "passed": true,
+        "details": "r=0.603, Acc=68%, F1=0.743, n=28",
+        "scores": {
+          "pearson_r": 0.603,
+          "accuracy": 0.6786,
+          "precision": 0.65,
+          "recall": 0.8667,
+          "f1": 0.7429,
+          "tp": 13,
+          "fp": 7,
+          "tn": 6,
+          "fn": 2,
+          "n": 28
+        }
+      },
+      {
+        "name": "ragbench_overall_vs_adherence",
+        "passed": true,
+        "details": "r=0.546, Acc=57%, F1=0.698, n=30",
+        "scores": {
+          "pearson_r": 0.5456,
+          "accuracy": 0.5667,
+          "precision": 0.5357,
+          "recall": 1.0,
+          "f1": 0.6977,
+          "tp": 15,
+          "fp": 13,
+          "tn": 2,
+          "fn": 0,
+          "n": 30
+        }
+      },
+      {
+        "name": "summeval_coherence",
+        "passed": true,
+        "details": "r=0.593, n=5",
+        "scores": {
+          "pearson_r": 0.5928,
+          "n": 5
+        }
+      },
+      {
+        "name": "summeval_faithfulness_vs_consistency",
+        "passed": true,
+        "details": "r=0.949, n=3 (NOTE: gt_mean=0.94, possible ceiling effect)",
+        "scores": {
+          "pearson_r": 0.9495,
+          "gt_mean": 0.9444,
+          "n": 3
+        }
+      },
+      {
+        "name": "summeval_helpfulness_vs_relevance",
+        "passed": true,
+        "details": "r=0.636, n=5",
+        "scores": {
+          "pearson_r": 0.6362,
+          "n": 5
+        }
+      },
+      {
+        "name": "summeval_overall_score",
+        "passed": true,
+        "details": "r=0.956, n=5",
+        "scores": {
+          "pearson_r": 0.9565,
+          "n": 5
+        }
+      },
+      {
+        "name": "truthfulqa_overall_score",
+        "passed": true,
+        "details": "r=0.277, Acc=50%, F1=0.667, n=10",
+        "scores": {
+          "pearson_r": 0.2772,
+          "accuracy": 0.5,
+          "precision": 0.5,
+          "recall": 1.0,
+          "f1": 0.6667,
+          "tp": 5,
+          "fp": 5,
+          "tn": 0,
+          "fn": 0,
+          "n": 10
+        }
+      },
+      {
+        "name": "truthfulqa_helpfulness",
+        "passed": true,
+        "details": "r=0.468, Acc=70%, F1=0.667, n=10",
+        "scores": {
+          "pearson_r": 0.4683,
+          "accuracy": 0.7,
+          "precision": 0.75,
+          "recall": 0.6,
+          "f1": 0.6667,
+          "tp": 3,
+          "fp": 1,
+          "tn": 4,
+          "fn": 2,
+          "n": 10
+        }
+      }
+    ],
+    "consistency": [
+      {
+        "name": "consistency_t1_overall_score",
+        "passed": true,
+        "details": "mean=0.990, stddev=0.017, values=[0.97, 1.0, 1.0]",
+        "scores": {
+          "mean": 0.99,
+          "stddev": 0.017320508075688787
+        }
+      },
+      {
+        "name": "consistency_t1_faithfulness",
+        "passed": true,
+        "details": "mean=1.000, stddev=0.000, values=[1.0, 1.0, 1.0]",
+        "scores": {
+          "mean": 1.0,
+          "stddev": 0.0
+        }
+      },
+      {
+        "name": "consistency_t1_completeness",
+        "passed": true,
+        "details": "mean=1.000, stddev=0.000, values=[1.0, 1.0, 1.0]",
+        "scores": {
+          "mean": 1.0,
+          "stddev": 0.0
+        }
+      },
+      {
+        "name": "consistency_t1_helpfulness",
+        "passed": false,
+        "details": "mean=0.900, stddev=0.173, values=[0.7, 1.0, 1.0]",
+        "scores": {
+          "mean": 0.9,
+          "stddev": 0.17320508075688776
+        }
+      },
+      {
+        "name": "consistency_t1_coherence",
+        "passed": true,
+        "details": "mean=1.000, stddev=0.000, values=[1.0, 1.0, 1.0]",
+        "scores": {
+          "mean": 1.0,
+          "stddev": 0.0
+        }
+      },
+      {
+        "name": "consistency_t2_overall_score",
+        "passed": true,
+        "details": "mean=0.963, stddev=0.053, values=[1.0, 0.925]",
+        "scores": {
+          "mean": 0.9625,
+          "stddev": 0.053033008588991036
+        }
+      },
+      {
+        "name": "consistency_t2_faithfulness",
+        "passed": true,
+        "details": "mean=1.000, stddev=0.000, values=[1.0, 1.0]",
+        "scores": {
+          "mean": 1.0,
+          "stddev": 0.0
+        }
+      },
+      {
+        "name": "consistency_t2_completeness",
+        "passed": false,
+        "details": "mean=0.812, stddev=0.265, values=[1.0, 0.625]",
+        "scores": {
+          "mean": 0.8125,
+          "stddev": 0.2651650429449553
+        }
+      },
+      {
+        "name": "consistency_t2_helpfulness",
+        "passed": true,
+        "details": "mean=1.000, stddev=0.000, values=[1.0, 1.0]",
+        "scores": {
+          "mean": 1.0,
+          "stddev": 0.0
+        }
+      },
+      {
+        "name": "consistency_t2_coherence",
+        "passed": true,
+        "details": "mean=1.000, stddev=0.000, values=[1.0, 1.0]",
+        "scores": {
+          "mean": 1.0,
+          "stddev": 0.0
+        }
+      }
+    ]
+  },
+  "summary": {
+    "total_pass": 34,
+    "total_tests": 36,
+    "pass_rate": 94.4
+  }
+}

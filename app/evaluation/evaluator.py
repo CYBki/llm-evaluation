@@ -17,6 +17,7 @@ from app.evaluation.prompts import (
     build_stage_2_repair_user_prompt,
     build_stage_2_user_prompt,
 )
+from app.evaluation.rag_metrics import compute_rag_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,48 @@ _BOOL_FIELDS = ["is_off_topic", "is_deflection"]
 _REQUIRED_FIELDS = _FLOAT_FIELDS + _BOOL_FIELDS + ["reasoning_summary", "disagreement_claims"]
 
 _MAX_STAGE_2_RETRIES = 3
+
+# ── Overall Score Weights ──────────────────────────────────────────────
+# Weighted formula replaces LLM-generated overall_score for consistency.
+# faithfulness and completeness come from RAG analytical metrics.
+_OVERALL_WEIGHTS = {
+    "faithfulness":      0.25,
+    "completeness":      0.20,
+    "answer_relevancy":  0.20,
+    "coherence":         0.15,
+    "helpfulness":       0.10,
+    "clarity":           0.10,
+}
+
+
+def _compute_overall_score(parsed: dict[str, Any], rag_results: dict[str, Any]) -> float | None:
+    """Compute overall_score as a weighted average of rubric + RAG metrics."""
+    sources = {
+        "faithfulness": rag_results.get("faithfulness"),
+        "completeness": rag_results.get("completeness") or parsed.get("completeness"),
+        "answer_relevancy": rag_results.get("answer_relevancy"),
+        "coherence": parsed.get("coherence"),
+        "helpfulness": parsed.get("helpfulness"),
+        "clarity": parsed.get("clarity"),
+    }
+
+    total_weight = 0.0
+    weighted_sum = 0.0
+    for key, weight in _OVERALL_WEIGHTS.items():
+        val = sources.get(key)
+        if val is not None:
+            try:
+                val = float(val)
+                weighted_sum += val * weight
+                total_weight += weight
+            except (ValueError, TypeError):
+                continue
+
+    if total_weight == 0.0:
+        # Fallback to LLM-generated score if no metrics available
+        return parsed.get("overall_score")
+
+    return round(weighted_sum / total_weight, 4)
 
 
 async def evaluate_trace(question: str, answer: str, contexts: list[str] | None) -> dict[str, Any]:
@@ -52,15 +95,32 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None)
             "model_used": f"{settings.stage_1_model} + {settings.stage_2_model}",
             "prompt_version": settings.prompt_version,
             "rubric_version": settings.rubric_version,
+            "answer_relevancy": None,
+            "faithfulness": None,
+            "hallucination_score": None,
+            "citation_check": None,
+            "faithfulness_claims": [],
+            "completeness_key_points": [],
         }
 
     try:
-        stage_1 = await client.chat_completion(
-            model=settings.stage_1_model,
-            system_prompt=STAGE_1_SYSTEM_PROMPT,
-            user_prompt=build_stage_1_user_prompt(question, answer, context_items),
-            max_completion_tokens=16384,
+        import asyncio
+
+        # Run Stage 1 (rubric CoT) and RAG metrics concurrently
+        stage_1_task = asyncio.create_task(
+            client.chat_completion(
+                model=settings.stage_1_model,
+                system_prompt=STAGE_1_SYSTEM_PROMPT,
+                user_prompt=build_stage_1_user_prompt(question, answer, context_items),
+                max_completion_tokens=16384,
+            )
         )
+        rag_metrics_task = asyncio.create_task(
+            compute_rag_metrics(question, answer, contexts)
+        )
+
+        stage_1 = await stage_1_task
+        rag_results = await rag_metrics_task
 
         # ── Stage 2: structured output with retry loop ──
         parsed: dict[str, Any] = {}
@@ -108,11 +168,11 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None)
             "clarity": parsed.get("clarity"),
             "specificity": parsed.get("specificity"),
             "is_off_topic": parsed.get("is_off_topic"),
-            "completeness": parsed.get("completeness"),
+            "completeness": rag_results.get("completeness") or parsed.get("completeness"),
             "coherence": parsed.get("coherence"),
             "helpfulness": parsed.get("helpfulness"),
             "is_deflection": parsed.get("is_deflection"),
-            "overall_score": parsed.get("overall_score"),
+            "overall_score": _compute_overall_score(parsed, rag_results),
             "evaluation_confidence": parsed.get("evaluation_confidence"),
             "reasoning_summary": parsed.get("reasoning_summary"),
             "disagreement_claims": parsed.get("disagreement_claims", []),
@@ -121,6 +181,12 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None)
             "model_used": f"{settings.stage_1_model} + {settings.stage_2_model}",
             "prompt_version": settings.prompt_version,
             "rubric_version": settings.rubric_version,
+            "answer_relevancy": rag_results.get("answer_relevancy"),
+            "faithfulness": rag_results.get("faithfulness"),
+            "hallucination_score": rag_results.get("hallucination_score"),
+            "citation_check": rag_results.get("citation_check"),
+            "faithfulness_claims": rag_results.get("faithfulness_claims", []),
+            "completeness_key_points": rag_results.get("completeness_key_points", []),
         }
     except LLMClientError as exc:
         return {
@@ -140,6 +206,12 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None)
             "model_used": f"{settings.stage_1_model} + {settings.stage_2_model}",
             "prompt_version": settings.prompt_version,
             "rubric_version": settings.rubric_version,
+            "answer_relevancy": None,
+            "faithfulness": None,
+            "hallucination_score": None,
+            "citation_check": None,
+            "faithfulness_claims": [],
+            "completeness_key_points": [],
         }
 
 

@@ -40,6 +40,12 @@ def _to_trace_response(trace: Trace) -> TraceResponse:
                 model_used=evaluation.model_used,
                 prompt_version=evaluation.prompt_version,
                 rubric_version=evaluation.rubric_version,
+                answer_relevancy=evaluation.answer_relevancy,
+                faithfulness=evaluation.faithfulness,
+                hallucination_score=evaluation.hallucination_score,
+                citation_check=evaluation.citation_check,
+                faithfulness_claims=evaluation.faithfulness_claims,
+                completeness_key_points=evaluation.completeness_key_points,
             )
             if evaluation
             else None

@@ -4,6 +4,7 @@ import pytest
 
 from app.evaluation.evaluator import (
     _coerce_types,
+    _compute_overall_score,
     _regex_extract_scores,
     _safe_parse_json,
     _validate_schema,
@@ -113,3 +114,56 @@ class TestRegexExtractScores:
         text = "CLARITY: 0.99"
         result = _regex_extract_scores(text)
         assert 0.0 <= result["clarity"] <= 1.0
+
+
+# ── _compute_overall_score ─────────────────────────────────────────────
+
+class TestComputeOverallScore:
+    def test_full_metrics(self):
+        parsed = {"coherence": 0.8, "helpfulness": 0.7, "clarity": 0.9}
+        rag = {"faithfulness": 0.9, "completeness": 0.8, "answer_relevancy": 0.7}
+        score = _compute_overall_score(parsed, rag)
+        # 0.25*0.9 + 0.20*0.8 + 0.20*0.7 + 0.15*0.8 + 0.10*0.7 + 0.10*0.9 = 0.805
+        assert score == pytest.approx(0.805, abs=0.001)
+
+    def test_partial_metrics(self):
+        parsed = {"coherence": 0.8, "helpfulness": None, "clarity": None}
+        rag = {"faithfulness": 1.0, "completeness": None, "answer_relevancy": 0.6}
+        score = _compute_overall_score(parsed, rag)
+        # Only faithfulness(0.25), answer_relevancy(0.20), coherence(0.15) available
+        # total_weight = 0.60
+        # weighted_sum = 0.25*1.0 + 0.20*0.6 + 0.15*0.8 = 0.49
+        # 0.49/0.60 ≈ 0.8167
+        assert score == pytest.approx(0.8167, abs=0.001)
+
+    def test_no_metrics_falls_back(self):
+        parsed = {"overall_score": 0.5}
+        rag = {}
+        score = _compute_overall_score(parsed, rag)
+        assert score == 0.5
+
+    def test_all_none_falls_back(self):
+        parsed = {"coherence": None, "helpfulness": None, "clarity": None, "overall_score": 0.42}
+        rag = {"faithfulness": None, "completeness": None, "answer_relevancy": None}
+        score = _compute_overall_score(parsed, rag)
+        assert score == 0.42
+
+    def test_rag_completeness_overrides_parsed(self):
+        parsed = {"coherence": 0.8, "helpfulness": 0.8, "clarity": 0.8, "completeness": 0.3}
+        rag = {"faithfulness": 0.8, "completeness": 0.9, "answer_relevancy": 0.8}
+        score = _compute_overall_score(parsed, rag)
+        # completeness should use 0.9 (rag) not 0.3 (parsed)
+        expected = 0.25*0.8 + 0.20*0.9 + 0.20*0.8 + 0.15*0.8 + 0.10*0.8 + 0.10*0.8
+        assert score == pytest.approx(expected, abs=0.001)
+
+    def test_perfect_scores(self):
+        parsed = {"coherence": 1.0, "helpfulness": 1.0, "clarity": 1.0}
+        rag = {"faithfulness": 1.0, "completeness": 1.0, "answer_relevancy": 1.0}
+        score = _compute_overall_score(parsed, rag)
+        assert score == pytest.approx(1.0, abs=0.001)
+
+    def test_zero_scores(self):
+        parsed = {"coherence": 0.0, "helpfulness": 0.0, "clarity": 0.0}
+        rag = {"faithfulness": 0.0, "completeness": 0.0, "answer_relevancy": 0.0}
+        score = _compute_overall_score(parsed, rag)
+        assert score == pytest.approx(0.0, abs=0.001)

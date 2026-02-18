@@ -77,6 +77,14 @@ def evaluate_trace_and_persist(trace_id: str) -> None:
         evaluation.prompt_version = result.get("prompt_version")
         evaluation.rubric_version = result.get("rubric_version")
 
+        # RAG-specific metrics
+        evaluation.answer_relevancy = result.get("answer_relevancy")
+        evaluation.faithfulness = result.get("faithfulness")
+        evaluation.hallucination_score = result.get("hallucination_score")
+        evaluation.citation_check = result.get("citation_check")
+        evaluation.faithfulness_claims = result.get("faithfulness_claims")
+        evaluation.completeness_key_points = result.get("completeness_key_points")
+
         trace.status = "completed" if _is_successful_result(result) else "failed"
 
         db.add(evaluation)

@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     openai_timeout_seconds: float = 120.0
     stage_1_model: str = "gpt-5.2"
     stage_2_model: str = "gpt-5-mini"
+    rag_metrics_model: str = "gpt-5-mini"
     prompt_version: str = "v1.0"
     rubric_version: str = "v1.0"
     evaluation_mode: str = "sync"  # sync | async
