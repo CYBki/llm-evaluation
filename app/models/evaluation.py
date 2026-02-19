@@ -37,6 +37,10 @@ class EvaluationResult(Base):
     faithfulness_claims: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
     completeness_key_points: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
 
+    # ── Context retrieval quality metrics ──
+    context_precision: Mapped[float | None] = mapped_column(Float, nullable=True)
+    context_recall: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     evaluated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     model_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
     prompt_version: Mapped[str | None] = mapped_column(String(50), nullable=True)

@@ -34,12 +34,14 @@ _MAX_STAGE_2_RETRIES = 3
 # Weighted formula replaces LLM-generated overall_score for consistency.
 # faithfulness and completeness come from RAG analytical metrics.
 _OVERALL_WEIGHTS = {
-    "faithfulness":      0.25,
-    "completeness":      0.20,
-    "answer_relevancy":  0.20,
-    "coherence":         0.15,
-    "helpfulness":       0.10,
-    "clarity":           0.10,
+    "faithfulness":       0.20,
+    "completeness":       0.15,
+    "answer_relevancy":   0.15,
+    "context_precision":  0.15,
+    "context_recall":     0.10,
+    "coherence":          0.10,
+    "helpfulness":        0.10,
+    "clarity":            0.05,
 }
 
 
@@ -49,6 +51,8 @@ def _compute_overall_score(parsed: dict[str, Any], rag_results: dict[str, Any]) 
         "faithfulness": rag_results.get("faithfulness"),
         "completeness": rag_results.get("completeness") or parsed.get("completeness"),
         "answer_relevancy": rag_results.get("answer_relevancy"),
+        "context_precision": rag_results.get("context_precision"),
+        "context_recall": rag_results.get("context_recall"),
         "coherence": parsed.get("coherence"),
         "helpfulness": parsed.get("helpfulness"),
         "clarity": parsed.get("clarity"),
@@ -73,7 +77,7 @@ def _compute_overall_score(parsed: dict[str, Any], rag_results: dict[str, Any]) 
     return round(weighted_sum / total_weight, 4)
 
 
-async def evaluate_trace(question: str, answer: str, contexts: list[str] | None) -> dict[str, Any]:
+async def evaluate_trace(question: str, answer: str, contexts: list[str] | None, ground_truth: str | None = None) -> dict[str, Any]:
     context_items = contexts or []
     client = OpenAILLMClient()
 
@@ -101,6 +105,8 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None)
             "citation_check": None,
             "faithfulness_claims": [],
             "completeness_key_points": [],
+            "context_precision": None,
+            "context_recall": None,
         }
 
     try:
@@ -116,7 +122,7 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None)
             )
         )
         rag_metrics_task = asyncio.create_task(
-            compute_rag_metrics(question, answer, contexts)
+            compute_rag_metrics(question, answer, contexts, ground_truth)
         )
 
         stage_1 = await stage_1_task
@@ -187,6 +193,8 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None)
             "citation_check": rag_results.get("citation_check"),
             "faithfulness_claims": rag_results.get("faithfulness_claims", []),
             "completeness_key_points": rag_results.get("completeness_key_points", []),
+            "context_precision": rag_results.get("context_precision"),
+            "context_recall": rag_results.get("context_recall"),
         }
     except LLMClientError as exc:
         return {
@@ -212,6 +220,8 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None)
             "citation_check": None,
             "faithfulness_claims": [],
             "completeness_key_points": [],
+            "context_precision": None,
+            "context_recall": None,
         }
 
 

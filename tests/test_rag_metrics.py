@@ -160,3 +160,125 @@ class TestSafeParse:
         result = _safe_parse(raw)
         assert len(result["claims"]) == 1
         assert result["claims"][0]["verdict"] == "supported"
+
+
+# ── compute_context_precision (unit-level — mocked LLM) ───────────────
+
+import asyncio
+from unittest.mock import AsyncMock, patch, MagicMock
+from app.evaluation.rag_metrics import compute_context_precision, compute_context_recall
+
+
+class TestComputeContextPrecision:
+    def _run(self, coro):
+        return asyncio.get_event_loop().run_until_complete(coro)
+
+    def test_all_relevant(self):
+        mock_client = MagicMock()
+        mock_client.is_enabled = True
+        resp = MagicMock()
+        resp.content = '{"contexts": [{"context_index": 0, "relevant": true, "reason": "ok"}, {"context_index": 1, "relevant": true, "reason": "ok"}]}'
+        mock_client.chat_completion = AsyncMock(return_value=resp)
+
+        result = self._run(compute_context_precision(mock_client, "What is X?", ["ctx1", "ctx2"]))
+        assert result == pytest.approx(1.0)
+
+    def test_none_relevant(self):
+        mock_client = MagicMock()
+        mock_client.is_enabled = True
+        resp = MagicMock()
+        resp.content = '{"contexts": [{"context_index": 0, "relevant": false, "reason": "off"}, {"context_index": 1, "relevant": false, "reason": "off"}]}'
+        mock_client.chat_completion = AsyncMock(return_value=resp)
+
+        result = self._run(compute_context_precision(mock_client, "What is X?", ["ctx1", "ctx2"]))
+        assert result == pytest.approx(0.0)
+
+    def test_partial_relevant(self):
+        mock_client = MagicMock()
+        mock_client.is_enabled = True
+        resp = MagicMock()
+        resp.content = '{"contexts": [{"context_index": 0, "relevant": true, "reason": "ok"}, {"context_index": 1, "relevant": false, "reason": "off"}, {"context_index": 2, "relevant": true, "reason": "ok"}]}'
+        mock_client.chat_completion = AsyncMock(return_value=resp)
+
+        result = self._run(compute_context_precision(mock_client, "Q?", ["a", "b", "c"]))
+        assert result == pytest.approx(2 / 3, abs=0.001)
+
+    def test_empty_contexts_returns_none(self):
+        mock_client = MagicMock()
+        mock_client.is_enabled = True
+        result = self._run(compute_context_precision(mock_client, "Q?", []))
+        assert result is None
+
+    def test_client_disabled_returns_none(self):
+        mock_client = MagicMock()
+        mock_client.is_enabled = False
+        result = self._run(compute_context_precision(mock_client, "Q?", ["ctx1"]))
+        assert result is None
+
+    def test_malformed_response_returns_none(self):
+        mock_client = MagicMock()
+        mock_client.is_enabled = True
+        resp = MagicMock()
+        resp.content = '{"contexts": []}'
+        mock_client.chat_completion = AsyncMock(return_value=resp)
+
+        result = self._run(compute_context_precision(mock_client, "Q?", ["ctx1"]))
+        assert result is None
+
+
+class TestComputeContextRecall:
+    def _run(self, coro):
+        return asyncio.get_event_loop().run_until_complete(coro)
+
+    def test_all_found(self):
+        mock_client = MagicMock()
+        mock_client.is_enabled = True
+        resp = MagicMock()
+        resp.content = '{"items": [{"statement": "A", "verdict": "found", "evidence": "ctx1"}, {"statement": "B", "verdict": "found", "evidence": "ctx2"}]}'
+        mock_client.chat_completion = AsyncMock(return_value=resp)
+
+        result = self._run(compute_context_recall(mock_client, "Q?", ["ctx1"], "A and B"))
+        assert result == pytest.approx(1.0)
+
+    def test_none_found(self):
+        mock_client = MagicMock()
+        mock_client.is_enabled = True
+        resp = MagicMock()
+        resp.content = '{"items": [{"statement": "A", "verdict": "not_found", "evidence": ""}, {"statement": "B", "verdict": "not_found", "evidence": ""}]}'
+        mock_client.chat_completion = AsyncMock(return_value=resp)
+
+        result = self._run(compute_context_recall(mock_client, "Q?", ["ctx1"], "A and B"))
+        assert result == pytest.approx(0.0)
+
+    def test_partial_found(self):
+        mock_client = MagicMock()
+        mock_client.is_enabled = True
+        resp = MagicMock()
+        resp.content = '{"items": [{"statement": "A", "verdict": "found", "evidence": "ok"}, {"statement": "B", "verdict": "not_found", "evidence": ""}, {"statement": "C", "verdict": "found", "evidence": "ok"}]}'
+        mock_client.chat_completion = AsyncMock(return_value=resp)
+
+        result = self._run(compute_context_recall(mock_client, "Q?", ["ctx1"], "A B C"))
+        assert result == pytest.approx(2 / 3, abs=0.001)
+
+    def test_no_ground_truth_still_works(self):
+        """Without ground_truth, the model extracts key needs from the question."""
+        mock_client = MagicMock()
+        mock_client.is_enabled = True
+        resp = MagicMock()
+        resp.content = '{"items": [{"statement": "need1", "verdict": "found", "evidence": "ctx"}]}'
+        mock_client.chat_completion = AsyncMock(return_value=resp)
+
+        result = self._run(compute_context_recall(mock_client, "Q?", ["ctx1"], None))
+        assert result == pytest.approx(1.0)
+
+    def test_empty_contexts_returns_none(self):
+        mock_client = MagicMock()
+        mock_client.is_enabled = True
+        result = self._run(compute_context_recall(mock_client, "Q?", [], "GT"))
+        assert result is None
+
+    def test_client_disabled_returns_none(self):
+        mock_client = MagicMock()
+        mock_client.is_enabled = False
+        result = self._run(compute_context_recall(mock_client, "Q?", ["ctx1"], "GT"))
+        assert result is None

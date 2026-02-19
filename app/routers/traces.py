@@ -7,10 +7,48 @@ from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.trace import Trace
 from app.models.user import User
-from app.schemas.ingest import EvaluationResponse, TraceListResponse, TraceResponse
+from app.schemas.ingest import (
+    DetailsResponse,
+    EvaluationDetailResponse,
+    EvaluationResponse,
+    FlagsResponse,
+    ScoresResponse,
+    TraceDetailResponse,
+    TraceListResponse,
+    TraceResponse,
+)
 from app.services.ingest_service import get_trace_by_id, list_traces
 
 router = APIRouter()
+
+
+def _build_scores(evaluation) -> ScoresResponse:
+    return ScoresResponse(
+        clarity=evaluation.clarity,
+        coherence=evaluation.coherence,
+        helpfulness=evaluation.helpfulness,
+        completeness=evaluation.completeness,
+        answer_relevancy=evaluation.answer_relevancy,
+        faithfulness=evaluation.faithfulness,
+        context_precision=evaluation.context_precision,
+        context_recall=evaluation.context_recall,
+        hallucination_score=evaluation.hallucination_score,
+        citation_check=evaluation.citation_check,
+    )
+
+
+def _build_flags(evaluation) -> FlagsResponse:
+    return FlagsResponse(
+        is_off_topic=evaluation.is_off_topic,
+        is_deflection=evaluation.is_deflection,
+    )
+
+
+def _build_details(evaluation) -> DetailsResponse:
+    return DetailsResponse(
+        faithfulness_claims=evaluation.faithfulness_claims or [],
+        completeness_key_points=evaluation.completeness_key_points or [],
+    )
 
 
 def _to_trace_response(trace: Trace) -> TraceResponse:
@@ -25,27 +63,43 @@ def _to_trace_response(trace: Trace) -> TraceResponse:
         created_at=trace.created_at,
         evaluation=(
             EvaluationResponse(
-                clarity=evaluation.clarity,
-                specificity=evaluation.specificity,
-                is_off_topic=evaluation.is_off_topic,
-                completeness=evaluation.completeness,
-                coherence=evaluation.coherence,
-                helpfulness=evaluation.helpfulness,
-                is_deflection=evaluation.is_deflection,
                 overall_score=evaluation.overall_score,
-                evaluation_confidence=evaluation.evaluation_confidence,
+                confidence=evaluation.evaluation_confidence,
+                scores=_build_scores(evaluation),
+                flags=_build_flags(evaluation),
                 reasoning_summary=evaluation.reasoning_summary,
-                disagreement_claims=evaluation.disagreement_claims,
+                details=_build_details(evaluation),
+            )
+            if evaluation
+            else None
+        ),
+    )
+
+
+def _to_trace_detail_response(trace: Trace) -> TraceDetailResponse:
+    evaluation = trace.evaluation_result
+    return TraceDetailResponse(
+        id=str(trace.id),
+        question=trace.question,
+        answer=trace.answer,
+        contexts=trace.contexts,
+        metadata=trace.meta,
+        status=trace.status,
+        created_at=trace.created_at,
+        evaluation=(
+            EvaluationDetailResponse(
+                overall_score=evaluation.overall_score,
+                confidence=evaluation.evaluation_confidence,
+                scores=_build_scores(evaluation),
+                flags=_build_flags(evaluation),
+                reasoning_summary=evaluation.reasoning_summary,
+                details=_build_details(evaluation),
+                specificity=evaluation.specificity,
                 stage_1_reasoning=evaluation.stage_1_reasoning,
+                disagreement_claims=evaluation.disagreement_claims,
                 model_used=evaluation.model_used,
                 prompt_version=evaluation.prompt_version,
                 rubric_version=evaluation.rubric_version,
-                answer_relevancy=evaluation.answer_relevancy,
-                faithfulness=evaluation.faithfulness,
-                hallucination_score=evaluation.hallucination_score,
-                citation_check=evaluation.citation_check,
-                faithfulness_claims=evaluation.faithfulness_claims,
-                completeness_key_points=evaluation.completeness_key_points,
             )
             if evaluation
             else None
@@ -65,12 +119,13 @@ def get_traces(
     return TraceListResponse(items=items, page=page, per_page=per_page, total=total)
 
 
-@router.get("/{trace_id}", response_model=TraceResponse)
+@router.get("/{trace_id}")
 def get_trace(
     trace_id: str,
+    detail: str = Query(default="summary", regex="^(summary|full)$"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> TraceResponse:
+) -> TraceResponse | TraceDetailResponse:
     try:
         UUID(trace_id)
     except ValueError:
@@ -78,4 +133,7 @@ def get_trace(
     trace = get_trace_by_id(db, current_user, trace_id)
     if not trace:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trace not found")
+
+    if detail == "full":
+        return _to_trace_detail_response(trace)
     return _to_trace_response(trace)

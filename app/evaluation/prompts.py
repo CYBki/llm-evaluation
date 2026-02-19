@@ -440,3 +440,147 @@ def build_completeness_user_prompt(question: str, answer: str, contexts: list[st
         "Extract key points from the question and verify which ones the answer covers.\n"
         "Output ONLY JSON."
     )
+
+
+# ── RAG Metrics: Context Precision ──────────────────────────────────────
+
+CONTEXT_PRECISION_SYSTEM_PROMPT = """
+You are a context relevance evaluation expert. Your task: evaluate whether each provided context passage is useful for answering the given question.
+
+Rules:
+- For each context passage, determine if it contains information that helps answer the question.
+- A context is "relevant" if it directly provides, partially provides, or gives useful background for answering the question.
+- A context is "not_relevant" if it is off-topic, contains no useful information for the question, or is entirely unrelated.
+- Provide a brief reason for each classification.
+- Output ONLY JSON, nothing else.
+
+Example:
+Question: "What is the capital of France?"
+Contexts:
+[0] "France is a country in Western Europe. Its capital and largest city is Paris."
+[1] "The Sahara Desert is the largest hot desert in the world."
+
+Output:
+{
+  "contexts": [
+    {"index": 0, "relevant": true, "reason": "Directly states the capital of France is Paris"},
+    {"index": 1, "relevant": false, "reason": "About the Sahara Desert, unrelated to the question"}
+  ]
+}
+""".strip()
+
+CONTEXT_PRECISION_JSON_SCHEMA = {
+    "name": "context_precision_result",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "contexts": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "index": {"type": "number"},
+                        "relevant": {"type": "boolean"},
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["index", "relevant", "reason"],
+                    "additionalProperties": False,
+                },
+            }
+        },
+        "required": ["contexts"],
+        "additionalProperties": False,
+    },
+}
+
+
+def build_context_precision_user_prompt(question: str, contexts: list[str]) -> str:
+    context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
+    return (
+        "QUESTION:\n"
+        f"{question}\n\n"
+        f"CONTEXT PASSAGES ({len(contexts)} total):\n"
+        f"{context_block}\n\n"
+        "For each context passage, determine if it is relevant to answering the question.\n"
+        "Output ONLY JSON."
+    )
+
+
+# ── RAG Metrics: Context Recall ─────────────────────────────────────────
+
+CONTEXT_RECALL_SYSTEM_PROMPT = """
+You are a context recall evaluation expert. Your task: determine how well the provided context passages cover the information needed to answer the question.
+
+You will receive EITHER a ground truth answer OR just the question. Your job differs based on what is provided:
+
+**If ground truth is provided:**
+1. Decompose the ground truth answer into individual factual statements.
+2. For each statement, check if any context passage contains this information.
+
+**If only a question is provided (no ground truth):**
+1. Identify the key information needs required to fully answer the question (2-6 needs).
+2. For each need, check if any context passage provides this information.
+
+Verdicts:
+- "found": The information is present in at least one context passage.
+- "not_found": None of the context passages contain this information.
+
+Provide a brief reason for each verdict.
+Output ONLY JSON, nothing else.
+""".strip()
+
+CONTEXT_RECALL_JSON_SCHEMA = {
+    "name": "context_recall_result",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "items": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "statement": {"type": "string"},
+                        "verdict": {
+                            "type": "string",
+                            "enum": ["found", "not_found"],
+                        },
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["statement", "verdict", "reason"],
+                    "additionalProperties": False,
+                },
+            }
+        },
+        "required": ["items"],
+        "additionalProperties": False,
+    },
+}
+
+
+def build_context_recall_user_prompt(
+    question: str,
+    contexts: list[str],
+    ground_truth: str | None = None,
+) -> str:
+    context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
+
+    if ground_truth:
+        return (
+            "GROUND TRUTH ANSWER:\n"
+            f"{ground_truth}\n\n"
+            f"CONTEXT PASSAGES ({len(contexts)} total):\n"
+            f"{context_block}\n\n"
+            "Decompose the ground truth into factual statements and check if each is found in the contexts.\n"
+            "Output ONLY JSON."
+        )
+    else:
+        return (
+            "QUESTION:\n"
+            f"{question}\n\n"
+            f"CONTEXT PASSAGES ({len(contexts)} total):\n"
+            f"{context_block}\n\n"
+            "Identify the key information needs to answer the question and check if each is found in the contexts.\n"
+            "Output ONLY JSON."
+        )

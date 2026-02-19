@@ -26,11 +26,17 @@ from app.evaluation.prompts import (
     CITATION_CHECK_SYSTEM_PROMPT,
     COMPLETENESS_JSON_SCHEMA,
     COMPLETENESS_SYSTEM_PROMPT,
+    CONTEXT_PRECISION_JSON_SCHEMA,
+    CONTEXT_PRECISION_SYSTEM_PROMPT,
+    CONTEXT_RECALL_JSON_SCHEMA,
+    CONTEXT_RECALL_SYSTEM_PROMPT,
     FAITHFULNESS_JSON_SCHEMA,
     FAITHFULNESS_SYSTEM_PROMPT,
     build_answer_relevancy_user_prompt,
     build_citation_check_user_prompt,
     build_completeness_user_prompt,
+    build_context_precision_user_prompt,
+    build_context_recall_user_prompt,
     build_faithfulness_user_prompt,
 )
 
@@ -88,7 +94,11 @@ async def compute_answer_relevancy(
         parsed = _safe_parse(resp.content)
         statements = parsed.get("statements", [])
         if not isinstance(statements, list) or len(statements) == 0:
-            logger.warning("answer_relevancy: no statements extracted")
+            logger.warning(
+                "answer_relevancy: no statements extracted. "
+                "Raw response (first 500 chars): %s",
+                (resp.content or "")[:500],
+            )
             return None
 
         relevant_count = sum(
@@ -129,13 +139,24 @@ async def compute_faithfulness(
             model=settings.rag_metrics_model,
             system_prompt=FAITHFULNESS_SYSTEM_PROMPT,
             user_prompt=build_faithfulness_user_prompt(answer, contexts),
-            max_completion_tokens=2048,
+            max_completion_tokens=4096,
             json_schema=FAITHFULNESS_JSON_SCHEMA,
+        )
+
+        logger.debug(
+            "faithfulness raw LLM response (first 300 chars): %s",
+            (resp.content or "")[:300],
         )
 
         parsed = _safe_parse(resp.content)
         claims = parsed.get("claims", [])
         if not isinstance(claims, list) or len(claims) == 0:
+            logger.warning(
+                "faithfulness: no claims extracted. "
+                "Parsed keys: %s | Raw response (first 500 chars): %s",
+                list(parsed.keys()),
+                (resp.content or "")[:500],
+            )
             return {"faithfulness": None, "claims": []}
 
         supported = sum(1 for c in claims if c.get("verdict") == "supported")
@@ -286,15 +307,114 @@ async def compute_completeness(
         return {"completeness": None, "key_points": []}
 
 
+# ── 6. Context Precision ───────────────────────────────────────────────
+
+async def compute_context_precision(
+    client: OpenAILLMClient,
+    question: str,
+    contexts: list[str],
+) -> float | None:
+    """
+    Evaluate whether each retrieved context is relevant to the question.
+
+    Returns float in [0.0, 1.0] = relevant_count / total_contexts.
+    Returns None if no contexts or on failure.
+    """
+    if not client.is_enabled or not contexts:
+        return None
+
+    try:
+        resp = await client.chat_completion(
+            model=settings.rag_metrics_model,
+            system_prompt=CONTEXT_PRECISION_SYSTEM_PROMPT,
+            user_prompt=build_context_precision_user_prompt(question, contexts),
+            max_completion_tokens=2048,
+            json_schema=CONTEXT_PRECISION_JSON_SCHEMA,
+        )
+
+        parsed = _safe_parse(resp.content)
+        ctx_items = parsed.get("contexts", [])
+        if not isinstance(ctx_items, list) or len(ctx_items) == 0:
+            logger.warning(
+                "context_precision: no context evaluations returned. "
+                "Raw response (first 500 chars): %s",
+                (resp.content or "")[:500],
+            )
+            return None
+
+        relevant_count = sum(
+            1 for c in ctx_items
+            if isinstance(c, dict) and c.get("relevant") is True
+        )
+        total = len(ctx_items)
+        return round(relevant_count / total, 4) if total > 0 else None
+
+    except LLMClientError:
+        logger.exception("context_precision computation failed")
+        return None
+
+
+# ── 7. Context Recall ──────────────────────────────────────────────────
+
+async def compute_context_recall(
+    client: OpenAILLMClient,
+    question: str,
+    contexts: list[str],
+    ground_truth: str | None = None,
+) -> float | None:
+    """
+    Measure how well contexts cover the information needed.
+
+    If ground_truth is provided: decompose GT into statements, check each in contexts.
+    If not: extract key needs from question, check each in contexts.
+
+    Returns float in [0.0, 1.0] = found_count / total_items.
+    Returns None if no contexts or on failure.
+    """
+    if not client.is_enabled or not contexts:
+        return None
+
+    try:
+        resp = await client.chat_completion(
+            model=settings.rag_metrics_model,
+            system_prompt=CONTEXT_RECALL_SYSTEM_PROMPT,
+            user_prompt=build_context_recall_user_prompt(question, contexts, ground_truth),
+            max_completion_tokens=2048,
+            json_schema=CONTEXT_RECALL_JSON_SCHEMA,
+        )
+
+        parsed = _safe_parse(resp.content)
+        items = parsed.get("items", [])
+        if not isinstance(items, list) or len(items) == 0:
+            logger.warning(
+                "context_recall: no items returned. "
+                "Raw response (first 500 chars): %s",
+                (resp.content or "")[:500],
+            )
+            return None
+
+        found_count = sum(
+            1 for item in items
+            if isinstance(item, dict) and item.get("verdict") == "found"
+        )
+        total = len(items)
+        return round(found_count / total, 4) if total > 0 else None
+
+    except LLMClientError:
+        logger.exception("context_recall computation failed")
+        return None
+
+
 # ── Orchestrator ───────────────────────────────────────────────────────
 
 async def compute_rag_metrics(
     question: str,
     answer: str,
     contexts: list[str] | None,
+    ground_truth: str | None = None,
 ) -> dict[str, Any]:
     """
-    Compute all 5 RAG metrics and return a flat dict.
+    Compute all 7 RAG metrics and return a flat dict.
 
     Returns:
         {
@@ -305,6 +425,8 @@ async def compute_rag_metrics(
             "faithfulness_claims": list[dict],
             "completeness": float | None,
             "completeness_key_points": list[dict],
+            "context_precision": float | None,
+            "context_recall": float | None,
         }
     """
     client = OpenAILLMClient()
@@ -325,11 +447,19 @@ async def compute_rag_metrics(
     completeness_task = asyncio.create_task(
         compute_completeness(client, question, answer, ctx)
     )
+    ctx_precision_task = asyncio.create_task(
+        compute_context_precision(client, question, ctx)
+    )
+    ctx_recall_task = asyncio.create_task(
+        compute_context_recall(client, question, ctx, ground_truth)
+    )
 
     relevancy = await relevancy_task
     faith_result = await faithfulness_task
     citation = await citation_task
     comp_result = await completeness_task
+    ctx_precision = await ctx_precision_task
+    ctx_recall = await ctx_recall_task
 
     # Hallucination is derived from faithfulness claims (no extra LLM call)
     hallucination = compute_hallucination_score(faith_result.get("claims", []))
@@ -342,6 +472,8 @@ async def compute_rag_metrics(
         "faithfulness_claims": faith_result.get("claims", []),
         "completeness": comp_result.get("completeness"),
         "completeness_key_points": comp_result.get("key_points", []),
+        "context_precision": ctx_precision,
+        "context_recall": ctx_recall,
     }
 
 

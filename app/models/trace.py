@@ -16,6 +16,7 @@ class Trace(Base):
     question: Mapped[str] = mapped_column(Text, nullable=False)
     answer: Mapped[str] = mapped_column(Text, nullable=False)
     contexts: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    ground_truth: Mapped[str | None] = mapped_column(Text, nullable=True)
     meta: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)

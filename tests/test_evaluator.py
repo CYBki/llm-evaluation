@@ -123,18 +123,17 @@ class TestComputeOverallScore:
         parsed = {"coherence": 0.8, "helpfulness": 0.7, "clarity": 0.9}
         rag = {"faithfulness": 0.9, "completeness": 0.8, "answer_relevancy": 0.7}
         score = _compute_overall_score(parsed, rag)
-        # 0.25*0.9 + 0.20*0.8 + 0.20*0.7 + 0.15*0.8 + 0.10*0.7 + 0.10*0.9 = 0.805
-        assert score == pytest.approx(0.805, abs=0.001)
+        # 6 of 8 metrics available; total_weight = 0.20+0.15+0.15+0.10+0.10+0.05 = 0.75
+        # weighted_sum = 0.20*0.9 + 0.15*0.8 + 0.15*0.7 + 0.10*0.8 + 0.10*0.7 + 0.05*0.9 = 0.60
+        assert score == pytest.approx(0.60 / 0.75, abs=0.001)
 
     def test_partial_metrics(self):
         parsed = {"coherence": 0.8, "helpfulness": None, "clarity": None}
         rag = {"faithfulness": 1.0, "completeness": None, "answer_relevancy": 0.6}
         score = _compute_overall_score(parsed, rag)
-        # Only faithfulness(0.25), answer_relevancy(0.20), coherence(0.15) available
-        # total_weight = 0.60
-        # weighted_sum = 0.25*1.0 + 0.20*0.6 + 0.15*0.8 = 0.49
-        # 0.49/0.60 ≈ 0.8167
-        assert score == pytest.approx(0.8167, abs=0.001)
+        # faithfulness(0.20), answer_relevancy(0.15), coherence(0.10) → total_weight=0.45
+        # weighted_sum = 0.20*1.0 + 0.15*0.6 + 0.10*0.8 = 0.37
+        assert score == pytest.approx(0.37 / 0.45, abs=0.001)
 
     def test_no_metrics_falls_back(self):
         parsed = {"overall_score": 0.5}
@@ -153,7 +152,8 @@ class TestComputeOverallScore:
         rag = {"faithfulness": 0.8, "completeness": 0.9, "answer_relevancy": 0.8}
         score = _compute_overall_score(parsed, rag)
         # completeness should use 0.9 (rag) not 0.3 (parsed)
-        expected = 0.25*0.8 + 0.20*0.9 + 0.20*0.8 + 0.15*0.8 + 0.10*0.8 + 0.10*0.8
+        # total_weight = 0.20+0.15+0.15+0.10+0.10+0.05 = 0.75
+        expected = (0.20*0.8 + 0.15*0.9 + 0.15*0.8 + 0.10*0.8 + 0.10*0.8 + 0.05*0.8) / 0.75
         assert score == pytest.approx(expected, abs=0.001)
 
     def test_perfect_scores(self):
@@ -167,3 +167,26 @@ class TestComputeOverallScore:
         rag = {"faithfulness": 0.0, "completeness": 0.0, "answer_relevancy": 0.0}
         score = _compute_overall_score(parsed, rag)
         assert score == pytest.approx(0.0, abs=0.001)
+
+    def test_context_metrics_included(self):
+        """When context_precision and context_recall are present, all 8 weights are used."""
+        parsed = {"coherence": 0.8, "helpfulness": 0.8, "clarity": 0.8}
+        rag = {
+            "faithfulness": 0.8, "completeness": 0.8, "answer_relevancy": 0.8,
+            "context_precision": 0.8, "context_recall": 0.8,
+        }
+        score = _compute_overall_score(parsed, rag)
+        # All 8 metrics = 0.8, all weights sum to 1.0 → score = 0.8
+        assert score == pytest.approx(0.8, abs=0.001)
+
+    def test_context_precision_only(self):
+        """Only context_precision available, context_recall None — partial re-weighting."""
+        parsed = {"coherence": 1.0, "helpfulness": 1.0, "clarity": 1.0}
+        rag = {
+            "faithfulness": 1.0, "completeness": 1.0, "answer_relevancy": 1.0,
+            "context_precision": 0.5, "context_recall": None,
+        }
+        score = _compute_overall_score(parsed, rag)
+        # 7 of 8 metrics, total_weight = 1.0 - 0.10 = 0.90
+        # weighted = 0.20 + 0.15 + 0.15 + 0.15*0.5 + 0.10 + 0.10 + 0.05 = 0.825
+        assert score == pytest.approx(0.825 / 0.90, abs=0.001)

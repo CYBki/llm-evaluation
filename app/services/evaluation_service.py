@@ -47,7 +47,7 @@ def evaluate_trace_and_persist(trace_id: str) -> None:
 
         try:
             loop = asyncio.new_event_loop()
-            result = loop.run_until_complete(evaluate_trace(trace.question, trace.answer, trace.contexts))
+            result = loop.run_until_complete(evaluate_trace(trace.question, trace.answer, trace.contexts, trace.ground_truth))
             loop.close()
         except Exception:
             logger.exception("Evaluation failed for trace %s", trace_id)
@@ -84,6 +84,8 @@ def evaluate_trace_and_persist(trace_id: str) -> None:
         evaluation.citation_check = result.get("citation_check")
         evaluation.faithfulness_claims = result.get("faithfulness_claims")
         evaluation.completeness_key_points = result.get("completeness_key_points")
+        evaluation.context_precision = result.get("context_precision")
+        evaluation.context_recall = result.get("context_recall")
 
         trace.status = "completed" if _is_successful_result(result) else "failed"
 

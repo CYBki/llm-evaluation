@@ -12,6 +12,7 @@ def create_trace(db: Session, user: User, payload: TraceCreate) -> Trace:
         question=payload.question,
         answer=payload.answer,
         contexts=payload.contexts,
+        ground_truth=payload.ground_truth,
         meta=payload.metadata,
         status="pending",
     )
@@ -33,6 +34,7 @@ def create_traces_batch(db: Session, user: User, payloads: list[TraceCreate]) ->
             question=payload.question,
             answer=payload.answer,
             contexts=payload.contexts,
+            ground_truth=payload.ground_truth,
             meta=payload.metadata,
             status="pending",
         )

@@ -1,7 +1,7 @@
 # RAG Evaluation System — Technical Documentation
 
-**Date:** 18 February 2026  
-**Version:** v1.1  
+**Date:** 19 February 2026  
+**Version:** v1.2  
 **Sprint Status:** Sprint 2 completed (with metric optimization + benchmark fixes)
 
 ---
@@ -38,20 +38,21 @@
 
 **Sprint 1 — completed items:**
 - Docker Compose (api + postgres + redis + celery worker)
-- PostgreSQL + Alembic migrations (3 migrations total)
+- PostgreSQL + Alembic migrations (initial + RAG + completeness + context metrics)
 - User model, auth (register + SHA-256 API key hashing)
 - Trace ingest (single + batch), trace list/detail endpoints
 - Two-stage LLM-as-Judge evaluation engine (Stage 1: gpt-5.2 CoT, Stage 2: gpt-5-mini JSON)
 - 8 rubric metrics + reasoning_summary + disagreement_claims
 - Rate limiting (30/min ingest, 10/min batch)
-- 87 unit tests passing
+- 101 unit tests passing
 
 **Sprint 2 — completed items:**
 - Redis + Celery async evaluation mode (configurable sync/async)
-- 5 analytical RAG metrics (answer_relevancy, faithfulness, hallucination_score, citation_check, completeness)
+- 7 analytical RAG metrics (answer_relevancy, faithfulness, hallucination_score, citation_check, completeness, context_precision, context_recall)
 - Weighted overall_score formula replacing LLM-generated score
 - Statement-level answer relevancy (DeepEval method)
 - Key-point completeness method
+- Context retrieval quality metrics (context_precision + context_recall with optional ground_truth)
 - Prompt optimization: clarity/specificity rubrics rewritten to evaluate ANSWER (not question)
 - Citation check with bounds verification
 - Unified benchmark script (4 sections: golden, perturbation, external GT, consistency)
@@ -99,7 +100,7 @@
 │ ┌──────────┐  ┌──────────────┐  ┌──────────────┐           │
 │ │ Stage 1  │  │   Stage 2    │  │  RAG Metrics  │           │
 │ │ gpt-5.2  │  │  gpt-5-mini  │  │  gpt-5-mini   │           │
-│ │ Rubric   │  │  JSON Parse  │  │  (4 LLM calls) │           │
+│ │ Rubric   │  │  JSON Parse  │  │  (6 LLM calls) │           │
 │ │ CoT      │  │              │  │               │           │
 │ └──────────┘  └──────────────┘  └──────────────┘           │
 │                                                              │
@@ -121,7 +122,7 @@
 - **Queue:** Redis + Celery (optional async mode)
 - **LLM:** OpenAI gpt-5.2 (Stage 1), gpt-5-mini (Stage 2 + RAG metrics)
 - **Container:** Docker + Docker Compose
-- **Tests:** pytest + httpx (87 tests)
+- **Tests:** pytest + httpx (101 tests)
 
 ---
 
@@ -173,7 +174,7 @@ When a trace is ingested, two parallel evaluation pathways run concurrently:
 - Has a retry loop (up to 3 attempts) with a repair prompt on validation failure
 - Falls back to regex extraction from Stage 1 text if all retries fail
 
-### Pipeline B: RAG Analytical Metrics (4 concurrent LLM calls)
+### Pipeline B: RAG Analytical Metrics (6 concurrent LLM calls)
 
 These metrics are computed independently in parallel, each making one LLM call to gpt-5-mini:
 
@@ -181,8 +182,10 @@ These metrics are computed independently in parallel, each making one LLM call t
 2. **faithfulness** — claim extraction + context verification
 3. **citation_check** — citation tag verification against context
 4. **completeness** — key-point extraction + coverage verification
+5. **context_precision** — context-level relevance to question
+6. **context_recall** — coverage of required information (with optional ground_truth)
 
-A 5th metric, **hallucination_score**, is derived mathematically from faithfulness claims (no extra LLM call).
+An additional metric, **hallucination_score**, is derived mathematically from faithfulness claims (no extra LLM call).
 
 ---
 
@@ -284,6 +287,25 @@ Key points:
 Score = (1.0 + 1.0 + 0.5 + 0.0) / 4 = 0.625
 ```
 
+#### 4.6 Context Precision (Retrieval Relevance)
+
+**Method:**
+1. LLM evaluates each retrieved context passage against the question
+2. Each context is classified as relevant / not_relevant
+3. Score = relevant_contexts / total_contexts
+
+**Interpretation:** High precision means retriever brings mostly useful context; low precision means many off-topic chunks.
+
+#### 4.7 Context Recall (Retrieval Coverage)
+
+**Method:**
+1. If `ground_truth` exists: decompose ground truth into factual statements
+2. If no `ground_truth`: derive key information needs from the question
+3. For each statement/need, verify whether at least one context contains it
+4. Score = found_items / total_items
+
+**Interpretation:** High recall means retrieved contexts contain the information needed for a complete answer.
+
 ---
 
 ## 5. Overall Score Formula
@@ -292,18 +314,20 @@ The overall_score is a **deterministic weighted average** (not LLM-generated) co
 
 ```
 overall_score = weighted_average({
-    faithfulness:      0.25,    ← RAG analytical (Pipeline B)
-    completeness:      0.20,    ← RAG analytical (Pipeline B)
-    answer_relevancy:  0.20,    ← RAG analytical (Pipeline B)
-    coherence:         0.15,    ← Rubric (Pipeline A)
+  faithfulness:      0.20,    ← RAG analytical (Pipeline B)
+  completeness:      0.15,    ← RAG analytical (Pipeline B)
+  answer_relevancy:  0.15,    ← RAG analytical (Pipeline B)
+  context_precision: 0.15,    ← RAG analytical (Pipeline B)
+  context_recall:    0.10,    ← RAG analytical (Pipeline B)
+  coherence:         0.10,    ← Rubric (Pipeline A)
     helpfulness:       0.10,    ← Rubric (Pipeline A)
-    clarity:           0.10,    ← Rubric (Pipeline A)
+  clarity:           0.05,    ← Rubric (Pipeline A)
 })
 ```
 
 If any metric is `None`, its weight is redistributed proportionally among available metrics.
 
-**Why weighted?** Faithfulness (is the answer grounded in context?) is the most critical quality signal for RAG systems, followed by completeness and relevancy. Coherence, helpfulness, and clarity are secondary quality indicators.
+**Why weighted?** The formula balances grounding quality (faithfulness), retrieval quality (context precision/recall), coverage (completeness), and answer usability (coherence/helpfulness/clarity).
 
 ---
 
@@ -424,7 +448,7 @@ Same trace evaluated 3 times. Pass criterion: stddev ≤ 0.15 per metric.
 
 ## 8. Known Issues & Root Cause Analysis
 
-### Resolved Issues (v1.0 → v1.1)
+### Resolved Issues (v1.0 → v1.2)
 
 | Issue | Root Cause | Fix Applied | Result |
 |-------|-----------|-------------|--------|
@@ -467,7 +491,8 @@ llm-evaluation/
 ├── alembic/versions/
 │   ├── 0001_initial_schema.py      # users, traces, evaluation_results
 │   ├── 0002_rag_metrics.py         # answer_relevancy, faithfulness, etc.
-│   └── 0003_add_completeness_key_points.py
+│   ├── 0003_add_completeness_key_points.py
+│   └── 0002_add_context_metrics.py # revision 0004_add_context_metrics
 │
 ├── app/
 │   ├── main.py                     # FastAPI app, router mount
@@ -498,7 +523,7 @@ llm-evaluation/
 │   │   ├── evaluator.py            # evaluate_trace() — Stage 1+2 + RAG merge
 │   │   ├── llm_client.py           # OpenAI async wrapper with retry
 │   │   ├── prompts.py              # All prompts + JSON schemas
-│   │   └── rag_metrics.py          # 5 RAG metrics (parallel execution)
+│   │   └── rag_metrics.py          # 7 RAG metrics (parallel execution)
 │   │
 │   ├── middleware/
 │   │   └── auth.py                 # X-API-Key header validation
@@ -514,7 +539,7 @@ llm-evaluation/
 ├── reports/
 │   └── benchmark_results.json      # Latest benchmark output
 │
-└── tests/                          # 87 unit tests
+└── tests/                          # 101 unit tests
     ├── test_auth_service.py
     ├── test_evaluation_service.py
     ├── test_evaluator.py
@@ -527,9 +552,9 @@ llm-evaluation/
 | File | Lines | Purpose |
 |------|-------|---------|
 | `scripts/run_independent_benchmark.py` | 1313 | Unified benchmark suite |
-| `app/evaluation/prompts.py` | 443 | All prompts + JSON schemas |
-| `app/evaluation/rag_metrics.py` | 386 | 5 RAG metrics |
-| `app/evaluation/evaluator.py` | 338 | Two-stage orchestrator |
+| `app/evaluation/prompts.py` | 586 | All prompts + JSON schemas |
+| `app/evaluation/rag_metrics.py` | 517 | 7 RAG metrics |
+| `app/evaluation/evaluator.py` | 347 | Two-stage orchestrator |
 | `app/evaluation/llm_client.py` | ~120 | OpenAI async client |
 
 ---
@@ -558,6 +583,7 @@ Headers: X-API-Key: re_xxxxx
   "question": "What causes rain?",
   "answer": "Rain forms from condensed water vapor.",
   "contexts": ["Rain is liquid water from atmospheric water vapor..."],
+  "ground_truth": "Rain forms when atmospheric water vapor condenses and falls as precipitation.",
   "metadata": {"session_id": "abc123"}
 }
 ```
@@ -570,23 +596,29 @@ Headers: X-API-Key: re_xxxxx
   "question": "...",
   "answer": "...",
   "evaluation": {
-    "clarity": 0.85,
-    "specificity": 0.70,
-    "is_off_topic": false,
-    "completeness": 0.90,
-    "coherence": 0.85,
-    "helpfulness": 0.75,
-    "is_deflection": false,
     "overall_score": 0.82,
-    "evaluation_confidence": 0.88,
+    "confidence": 0.88,
+    "scores": {
+      "clarity": 0.85,
+      "coherence": 0.85,
+      "helpfulness": 0.75,
+      "completeness": 0.90,
+      "answer_relevancy": 0.95,
+      "faithfulness": 0.80,
+      "context_precision": 0.83,
+      "context_recall": 0.67,
+      "hallucination_score": 0.80,
+      "citation_check": null
+    },
+    "flags": {
+      "is_off_topic": false,
+      "is_deflection": false
+    },
     "reasoning_summary": "Answer is mostly correct...",
-    "disagreement_claims": [...],
-    "answer_relevancy": 0.95,
-    "faithfulness": 0.80,
-    "hallucination_score": 0.80,
-    "citation_check": null,
-    "faithfulness_claims": [...],
-    "completeness_key_points": [...]
+    "details": {
+      "faithfulness_claims": [...],
+      "completeness_key_points": [...]
+    }
   }
 }
 ```
@@ -610,12 +642,14 @@ Headers: X-API-Key: re_xxxxx
 
 ### Cost Per Trace
 
+> Note: Costs vary by prompt length, number of contexts, and model pricing updates.
+
 | Component | Input | Output | Cost |
 |-----------|-------|--------|------|
 | Stage 1 (gpt-5.2) | ~900 tokens | ~400 tokens | ~$0.00037 |
 | Stage 2 (gpt-5-mini) | ~600 tokens | ~300 tokens | ~$0.00075 |
-| RAG metrics (4× gpt-5-mini) | ~2400 tokens | ~1200 tokens | ~$0.003 |
-| **Total per trace** | | | **~$0.004** |
+| RAG metrics (6× gpt-5-mini) | ~3600 tokens | ~1800 tokens | ~$0.0045 |
+| **Total per trace** | | | **~$0.0056** |
 
 ---
 
