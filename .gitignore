@@ -34,6 +34,9 @@ Thumbs.db
 # Data (büyük / indirilen veri setleri)
 data/
 
+# Reports — büyük JSON test çıktıları
+reports/*.json
+
 # Docker override (geçici compose dosyaları)
 /tmp/compose.override.*.yml
 
