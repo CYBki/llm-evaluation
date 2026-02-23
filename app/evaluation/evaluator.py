@@ -49,15 +49,26 @@ _OVERALL_WEIGHTS = {
 # even if clarity/coherence are perfect.
 _DEFLECTION_SCORE_CAP = 0.20
 
+# Off-topic answers should also never score high.
+_OFF_TOPIC_SCORE_CAP = 0.20
+
+# If any claim is explicitly contradicted by context, apply an additional cap.
+_CONTRADICTION_SCORE_CAP = 0.35
+
 
 def _compute_overall_score(
     parsed: dict[str, Any],
     rag_results: dict[str, Any],
     is_deflection: bool = False,
+    is_off_topic: bool = False,
+    has_contradiction: bool = False,
 ) -> float | None:
     """Compute overall_score as a weighted average of rubric + RAG metrics.
 
-    If is_deflection is True, the score is capped at _DEFLECTION_SCORE_CAP.
+    Score caps:
+    - is_deflection => _DEFLECTION_SCORE_CAP
+    - is_off_topic => _OFF_TOPIC_SCORE_CAP
+    - has_contradiction => _CONTRADICTION_SCORE_CAP
     """
     sources = {
         "faithfulness": rag_results.get("faithfulness"),
@@ -88,12 +99,30 @@ def _compute_overall_score(
     else:
         score = round(weighted_sum / total_weight, 4)
 
-    # Apply deflection cap
+    # Apply score caps
     if is_deflection and score is not None:
         score = min(score, _DEFLECTION_SCORE_CAP)
         logger.info("is_deflection=True → overall_score capped at %.2f", _DEFLECTION_SCORE_CAP)
 
+    if is_off_topic and score is not None:
+        score = min(score, _OFF_TOPIC_SCORE_CAP)
+        logger.info("is_off_topic=True → overall_score capped at %.2f", _OFF_TOPIC_SCORE_CAP)
+
+    if has_contradiction and score is not None:
+        score = min(score, _CONTRADICTION_SCORE_CAP)
+        logger.info("contradicted_claim=True → overall_score capped at %.2f", _CONTRADICTION_SCORE_CAP)
+
     return score
+
+
+def _has_contradicted_claims(claims: list[dict[str, Any]] | None) -> bool:
+    if not claims:
+        return False
+
+    for claim in claims:
+        if isinstance(claim, dict) and str(claim.get("verdict", "")).lower() == "contradicted":
+            return True
+    return False
 
 
 async def evaluate_trace(question: str, answer: str, contexts: list[str] | None, ground_truth: str | None = None) -> dict[str, Any]:
@@ -197,7 +226,13 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
             "coherence": parsed.get("coherence"),
             "helpfulness": parsed.get("helpfulness"),
             "is_deflection": parsed.get("is_deflection"),
-            "overall_score": _compute_overall_score(parsed, rag_results, is_deflection=bool(parsed.get("is_deflection"))),
+            "overall_score": _compute_overall_score(
+                parsed,
+                rag_results,
+                is_deflection=bool(parsed.get("is_deflection")),
+                is_off_topic=bool(parsed.get("is_off_topic")),
+                has_contradiction=_has_contradicted_claims(rag_results.get("faithfulness_claims")),
+            ),
             "evaluation_confidence": parsed.get("evaluation_confidence"),
             "reasoning_summary": parsed.get("reasoning_summary"),
             "disagreement_claims": parsed.get("disagreement_claims", []),
