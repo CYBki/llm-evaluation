@@ -32,11 +32,11 @@ _MAX_STAGE_2_RETRIES = 3
 
 # ── Overall Score Weights ──────────────────────────────────────────────
 # Weighted formula replaces LLM-generated overall_score for consistency.
-# faithfulness and completeness come from RAG analytical metrics.
+# hallucination_score and completeness come from RAG analytical metrics.
 _OVERALL_WEIGHTS = {
-    "faithfulness":       0.20,
+    "hallucination_score": 0.25,
     "completeness":       0.15,
-    "answer_relevancy":   0.15,
+    "answer_relevancy":   0.10,
     "context_precision":  0.15,
     "context_recall":     0.10,
     "coherence":          0.10,
@@ -71,7 +71,7 @@ def _compute_overall_score(
     - has_contradiction => _CONTRADICTION_SCORE_CAP
     """
     sources = {
-        "faithfulness": rag_results.get("faithfulness"),
+        "hallucination_score": rag_results.get("hallucination_score"),
         "completeness": rag_results.get("completeness") or parsed.get("completeness"),
         "answer_relevancy": rag_results.get("answer_relevancy"),
         "context_precision": rag_results.get("context_precision"),
@@ -116,12 +116,46 @@ def _compute_overall_score(
 
 
 def _has_contradicted_claims(claims: list[dict[str, Any]] | None) -> bool:
+    """Check hallucination_claims for confirmed contradictions."""
     if not claims:
         return False
 
     for claim in claims:
-        if isinstance(claim, dict) and str(claim.get("verdict", "")).lower() == "contradicted":
+        if isinstance(claim, dict) and str(claim.get("disagreement_type", "")).lower() == "confirmed contradiction":
             return True
+    return False
+
+
+def _coerce_off_topic_flag(
+    llm_is_off_topic: Any,
+    answer_relevancy: Any,
+    helpfulness: Any,
+) -> bool:
+    """Derive a robust off-topic flag with a deterministic hard-override.
+
+    Hard override (always wins):
+      if answer_relevancy == 0 and helpfulness == 0 -> off-topic = True
+    Otherwise trust the LLM boolean.
+    """
+    # ── hard override: scores prove the answer is completely irrelevant ──
+    try:
+        relevancy = float(answer_relevancy)
+    except (TypeError, ValueError):
+        relevancy = None
+
+    try:
+        help_score = float(helpfulness)
+    except (TypeError, ValueError):
+        help_score = None
+
+    if relevancy == 0.0 and help_score == 0.0:
+        logger.info("off-topic hard-override: answer_relevancy=0 and helpfulness=0")
+        return True
+
+    # ── trust LLM flag when scores don't trigger override ──
+    if isinstance(llm_is_off_topic, bool):
+        return llm_is_off_topic
+
     return False
 
 
@@ -148,10 +182,9 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
             "prompt_version": settings.prompt_version,
             "rubric_version": settings.rubric_version,
             "answer_relevancy": None,
-            "faithfulness": None,
             "hallucination_score": None,
             "citation_check": None,
-            "faithfulness_claims": [],
+            "hallucination_claims": [],
             "completeness_key_points": [],
             "context_precision": None,
             "context_recall": None,
@@ -218,10 +251,16 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
             if fallback.get("overall_score") is not None:
                 parsed = fallback
 
+        is_off_topic_value = _coerce_off_topic_flag(
+            parsed.get("is_off_topic"),
+            rag_results.get("answer_relevancy"),
+            parsed.get("helpfulness"),
+        )
+
         return {
             "clarity": parsed.get("clarity"),
             "specificity": parsed.get("specificity"),
-            "is_off_topic": parsed.get("is_off_topic"),
+            "is_off_topic": is_off_topic_value,
             "completeness": rag_results.get("completeness") or parsed.get("completeness"),
             "coherence": parsed.get("coherence"),
             "helpfulness": parsed.get("helpfulness"),
@@ -230,8 +269,8 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
                 parsed,
                 rag_results,
                 is_deflection=bool(parsed.get("is_deflection")),
-                is_off_topic=bool(parsed.get("is_off_topic")),
-                has_contradiction=_has_contradicted_claims(rag_results.get("faithfulness_claims")),
+                is_off_topic=is_off_topic_value,
+                has_contradiction=_has_contradicted_claims(rag_results.get("hallucination_claims")),
             ),
             "evaluation_confidence": parsed.get("evaluation_confidence"),
             "reasoning_summary": parsed.get("reasoning_summary"),
@@ -242,10 +281,9 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
             "prompt_version": settings.prompt_version,
             "rubric_version": settings.rubric_version,
             "answer_relevancy": rag_results.get("answer_relevancy"),
-            "faithfulness": rag_results.get("faithfulness"),
             "hallucination_score": rag_results.get("hallucination_score"),
             "citation_check": rag_results.get("citation_check"),
-            "faithfulness_claims": rag_results.get("faithfulness_claims", []),
+            "hallucination_claims": rag_results.get("hallucination_claims", []),
             "completeness_key_points": rag_results.get("completeness_key_points", []),
             "context_precision": rag_results.get("context_precision"),
             "context_recall": rag_results.get("context_recall"),
@@ -269,10 +307,9 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
             "prompt_version": settings.prompt_version,
             "rubric_version": settings.rubric_version,
             "answer_relevancy": None,
-            "faithfulness": None,
             "hallucination_score": None,
             "citation_check": None,
-            "faithfulness_claims": [],
+            "hallucination_claims": [],
             "completeness_key_points": [],
             "context_precision": None,
             "context_recall": None,

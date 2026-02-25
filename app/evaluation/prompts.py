@@ -14,8 +14,8 @@ SPECIFICITY (of the ANSWER):
 - 0.0 = Completely vague, no specific information whatsoever.
 
 IS_OFF_TOPIC:
-- true  = Question is irrelevant to the system's scope.
-- false = Question is within scope.
+- true  = The ANSWER does not address the question at all; it discusses an entirely unrelated topic.
+- false = The ANSWER makes a genuine attempt to address the question, even if partially or incorrectly.
 
 COHERENCE:
 - 1.0 = Fluent, logical, no contradictions.
@@ -182,72 +182,105 @@ def build_stage_2_repair_user_prompt(
     )
 
 
-# ── RAG Metrics: Faithfulness Claim Extraction ──────────────────────────
+# ── RAG Metrics: Hallucination (Dedicated Rubric Judge) ───────────────
 
-FAITHFULNESS_SYSTEM_PROMPT = """
-You are a factual claim verification expert. Your task: extract ALL factual claims from the given answer and verify each against the provided context passages.
+HALLUCINATION_STAGE_1_SYSTEM_PROMPT = """
+You are a hallucination detection evaluator.
+
+Task:
+1. Extract atomic factual claims from the ANSWER.
+2. For each claim, compare against CONTEXT PASSAGES.
+3. Label each claim with one disagreement_type:
+   - "agreement"                -> context supports the claim.
+   - "unsupported claim"        -> context does not provide evidence either way.
+   - "confirmed contradiction"  -> context explicitly conflicts with the claim.
+
+Borderline / paraphrase guidance:
+- If the answer paraphrases, summarises, or reasonably infers a fact FROM the context,
+  label it "agreement". Exact wording is NOT required.
+  Example: context says "typical use cases include session caching, pub/sub, leaderboards"
+           answer says "Redis is mostly used as a cache" → "agreement" (summary of context).
+- Reserve "unsupported claim" for statements the context truly says NOTHING about.
+- Reserve "confirmed contradiction" ONLY when the context explicitly states the opposite.
 
 Rules:
-- Extract every distinct factual assertion. Split compound sentences into individual claims.
-- Ambiguous or vague claims that cannot be clearly verified should be marked as "not_supported".
-- Opinion statements or subjective assessments are NOT factual claims — skip them.
-- For each claim, assign a verdict:
-  * "supported"     — The context explicitly supports this claim.
-  * "not_supported" — The context contains no information about this claim (neither supports nor contradicts).
-  * "contradicted"  — The context explicitly contradicts this claim.
-- Provide a brief reason for each verdict referencing the relevant context passage.
-- Output ONLY JSON, nothing else.
-
-Example:
-Answer: "Python was created by Guido van Rossum in 1991. It is the fastest programming language."
-Contexts: ["Python is a high-level programming language created by Guido van Rossum, first released in 1991."]
-
-Expected output:
-{"claims": [
-  {"claim": "Python was created by Guido van Rossum", "verdict": "supported", "reason": "Context explicitly states 'created by Guido van Rossum'"},
-  {"claim": "Python was created in 1991", "verdict": "supported", "reason": "Context states 'first released in 1991'"},
-  {"claim": "Python is the fastest programming language", "verdict": "not_supported", "reason": "Context does not mention performance or speed comparisons"}
-]}
+- Use short direct quotes from both answer and context when possible.
+- If no matching context evidence exists, set context_quote to "" and context_quote_type to "factual claim".
+- context_quote_type must be either "instruction" or "factual claim".
+- Keep reasoning concise (1-2 sentences per item).
+- Output plain text reasoning only; do not output JSON.
 """.strip()
 
-FAITHFULNESS_JSON_SCHEMA = {
-    "name": "faithfulness_result",
+HALLUCINATION_STAGE_2_JSON_SCHEMA = {
+    "name": "hallucination_rubric_result",
     "strict": True,
     "schema": {
         "type": "object",
         "properties": {
-            "claims": {
+            "disagreement_claims": {
                 "type": "array",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "claim": {"type": "string"},
-                        "verdict": {
+                        "context_quote": {"type": "string"},
+                        "context_quote_type": {
                             "type": "string",
-                            "enum": ["supported", "not_supported", "contradicted"],
+                            "enum": ["instruction", "factual claim"],
                         },
-                        "reason": {"type": "string"},
+                        "answer_quote": {"type": "string"},
+                        "reasoning": {"type": "string"},
+                        "disagreement_type": {
+                            "type": "string",
+                            "enum": ["agreement", "unsupported claim", "confirmed contradiction"],
+                        },
                     },
-                    "required": ["claim", "verdict", "reason"],
+                    "required": [
+                        "context_quote",
+                        "context_quote_type",
+                        "answer_quote",
+                        "reasoning",
+                        "disagreement_type",
+                    ],
                     "additionalProperties": False,
                 },
             }
         },
-        "required": ["claims"],
+        "required": ["disagreement_claims"],
         "additionalProperties": False,
     },
 }
 
+HALLUCINATION_STAGE_2_SYSTEM_PROMPT = """
+You convert evaluator reasoning into strict JSON.
+Return ONLY a single JSON object with one key: disagreement_claims.
+Use this structure for each item:
+- context_quote: string
+- context_quote_type: "instruction" | "factual claim"
+- answer_quote: string
+- reasoning: string
+- disagreement_type: "agreement" | "unsupported claim" | "confirmed contradiction"
 
-def build_faithfulness_user_prompt(answer: str, contexts: list[str]) -> str:
+If no claims are found, return {"disagreement_claims": []}.
+""".strip()
+
+
+def build_hallucination_stage_1_user_prompt(answer: str, contexts: list[str]) -> str:
     context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
     return (
         "ANSWER:\n"
         f"{answer}\n\n"
         "CONTEXT PASSAGES:\n"
         f"{context_block}\n\n"
-        "Extract every factual claim from the answer and verify each against the contexts.\n"
-        "Output ONLY JSON."
+        "Extract and evaluate factual claims with disagreement_type labels."
+    )
+
+
+def build_hallucination_stage_2_user_prompt(stage_1_reasoning: str) -> str:
+    return (
+        "Convert the following hallucination-evaluation reasoning into strict JSON.\n"
+        "Output ONLY JSON.\n\n"
+        "REASONING:\n"
+        f"{stage_1_reasoning}"
     )
 
 

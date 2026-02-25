@@ -9,11 +9,11 @@ Combines all validation methods into a single script:
   4. Consistency     — repeated evaluation variance measurement
 
 Key design notes:
-  - RAGBench: ONLY faithfulness_vs_adherence and overall_vs_adherence are compared.
+  - RAGBench: ONLY hallucination_vs_adherence and overall_vs_adherence are compared.
     completeness_score and relevance_score are NOT used because they measure fundamentally
     different things (sentence utilization and context relevance, not our key-point coverage
     or statement-level answer relevancy).
-  - SummEval faithfulness_vs_consistency: included but may show ceiling effect
+  - SummEval hallucination_vs_consistency: included but may show ceiling effect
     (81.6% of consistency scores = 1.0, near-zero variance).
   - All sections are independently skippable via CLI flags.
 
@@ -168,7 +168,6 @@ GOLDEN_SET = [
         },
         "checks": [
             ("overall_score", ">=", 0.7),
-            ("faithfulness", ">=", 0.8),
             ("hallucination_score", ">=", 0.8),
             ("completeness", ">=", 0.7),
             ("is_deflection", "==", False),
@@ -184,7 +183,7 @@ GOLDEN_SET = [
         },
         "checks": [
             ("overall_score", ">=", 0.65),
-            ("faithfulness", ">=", 0.65),
+            ("hallucination_score", ">=", 0.65),
             ("is_off_topic", "==", False),
         ],
     },
@@ -199,7 +198,6 @@ GOLDEN_SET = [
             "contexts": ["Tokyo is the capital of Japan. It has been the capital since 1868 when the Emperor moved from Kyoto. Tokyo has a population of approximately 14 million people."],
         },
         "checks": [
-            ("faithfulness", "<=", 0.4),
             ("hallucination_score", "<=", 0.4),
         ],
     },
@@ -212,8 +210,8 @@ GOLDEN_SET = [
             "contexts": ["Albert Einstein (1879-1955) was a German-born theoretical physicist who developed the theory of relativity. He received the Nobel Prize in Physics in 1921 for his explanation of the photoelectric effect."],
         },
         "checks": [
-            ("faithfulness", "<=", 0.7),
-            ("faithfulness", ">=", 0.2),
+            ("hallucination_score", "<=", 0.7),
+            ("hallucination_score", ">=", 0.2),
         ],
     },
 
@@ -227,7 +225,6 @@ GOLDEN_SET = [
             "contexts": ["The Eiffel Tower is a wrought-iron lattice tower on the Champ de Mars in Paris, France. It was constructed from 1887 to 1889 as the centerpiece of the 1889 World's Fair."],
         },
         "checks": [
-            ("faithfulness", "<=", 0.3),
             ("hallucination_score", "<=", 0.3),
         ],
     },
@@ -272,7 +269,7 @@ GOLDEN_SET = [
         },
         "checks": [
             ("completeness", "<=", 0.5),
-            ("faithfulness", ">=", 0.5),
+            ("hallucination_score", ">=", 0.5),
         ],
     },
 
@@ -329,7 +326,7 @@ GOLDEN_SET = [
             "contexts": ["The Amazon rainforest produces about 20% of the world's oxygen. It covers 5.5 million square kilometers across nine countries in South America."],
         },
         "checks": [
-            ("faithfulness", "<=", 0.3),
+            ("hallucination_score", "<=", 0.3),
         ],
     },
 
@@ -344,7 +341,46 @@ GOLDEN_SET = [
         },
         "checks": [
             ("citation_check", ">=", 0.5),
-            ("faithfulness", ">=", 0.7),
+            ("hallucination_score", ">=", 0.7),
+        ],
+    },
+
+    # ── J: Borderline / Paraphrase ──
+    {
+        "name": "J1_paraphrase_summary",
+        "desc": "Answer summarises context with different wording → should be agreement, not unsupported",
+        "payload": {
+            "question": "What is Redis used for?",
+            "answer": "Redis is mostly used as a cache. It stores frequently accessed data in memory for fast retrieval.",
+            "contexts": [
+                "Redis is an open-source, in-memory data structure store. "
+                "Typical use cases include session caching, real-time analytics, "
+                "pub/sub messaging, leaderboards, and rate limiting. "
+                "Redis keeps data in RAM, making reads and writes extremely fast."
+            ],
+        },
+        "checks": [
+            ("hallucination_score", ">=", 0.7),
+            ("is_off_topic", "==", False),
+        ],
+    },
+    {
+        "name": "J2_inference_from_context",
+        "desc": "Answer makes a reasonable inference from context → should be agreement",
+        "payload": {
+            "question": "Is PostgreSQL suitable for large applications?",
+            "answer": "Yes, PostgreSQL is well-suited for large-scale enterprise applications.",
+            "contexts": [
+                "PostgreSQL is a powerful, open source object-relational database system "
+                "with over 35 years of active development. It is used by many large companies "
+                "including Apple, Instagram, and Spotify for mission-critical workloads. "
+                "It supports advanced features like partitioning, parallel queries, and "
+                "can handle databases of several terabytes."
+            ],
+        },
+        "checks": [
+            ("hallucination_score", ">=", 0.7),
+            ("overall_score", ">=", 0.6),
         ],
     },
 ]
@@ -675,7 +711,7 @@ async def run_ragbench(
     client: httpx.AsyncClient, api_key: str, sem: asyncio.Semaphore, limit: int
 ) -> list[TestResult]:
     """
-    Compare faithfulness and overall_score against RAGBench adherence_score.
+    Compare hallucination_score and overall_score against RAGBench adherence_score.
 
     NOTE: We intentionally DO NOT compare:
       - completeness vs completeness_score (RAGBench measures sentence utilization,
@@ -696,7 +732,7 @@ async def run_ragbench(
     selected = low + high
     print(f"  RAGBench: {len(selected)} samples selected (low + high adherence)")
 
-    our_faith: list[float] = []
+    our_halluc: list[float] = []
     our_overall: list[float] = []
     gt_scores: list[float] = []
     gt_for_overall: list[float] = []
@@ -719,38 +755,38 @@ async def run_ragbench(
         try:
             detail = await ingest_and_get(client, api_key, payload, sem)
             evaluation = ev(detail)
-            faith = evaluation.get("faithfulness")
+            halluc = evaluation.get("hallucination_score")
             overall = evaluation.get("overall_score")
 
-            if faith is not None:
-                our_faith.append(faith)
+            if halluc is not None:
+                our_halluc.append(halluc)
                 gt_scores.append(gt)
             if overall is not None:
                 our_overall.append(overall)
                 gt_for_overall.append(gt)
 
-            print(f"    [{i+1}/{len(selected)}] gt={gt:.2f} → faith={faith}, overall={overall}")
+            print(f"    [{i+1}/{len(selected)}] gt={gt:.2f} → halluc={halluc}, overall={overall}")
         except Exception as exc:
             print(f"    [{i+1}/{len(selected)}] ERROR: {exc}")
 
     tasks = [_process(i, row) for i, row in enumerate(selected)]
     await asyncio.gather(*tasks)
 
-    # Faithfulness vs adherence
-    if len(our_faith) >= 5:
-        r_faith = pearson_correlation(gt_scores, our_faith)
-        cls = binary_classification(our_faith, gt_scores)
+    # Hallucination score vs adherence
+    if len(our_halluc) >= 5:
+        r_faith = pearson_correlation(gt_scores, our_halluc)
+        cls = binary_classification(our_halluc, gt_scores)
         passed = cls["f1"] >= 0.5 or r_faith >= 0.4
         results.append(TestResult(
-            name="ragbench_faithfulness_vs_adherence",
+            name="ragbench_hallucination_vs_adherence",
             passed=passed,
-            details=f"r={r_faith:.3f}, Acc={cls['accuracy']:.0%}, F1={cls['f1']:.3f}, n={len(our_faith)}",
-            scores={"pearson_r": round(r_faith, 4), **cls, "n": len(our_faith)},
+            details=f"r={r_faith:.3f}, Acc={cls['accuracy']:.0%}, F1={cls['f1']:.3f}, n={len(our_halluc)}",
+            scores={"pearson_r": round(r_faith, 4), **cls, "n": len(our_halluc)},
             section="external",
         ))
     else:
-        results.append(TestResult(name="ragbench_faithfulness", passed=False,
-                                  details=f"Too few samples: {len(our_faith)}", section="external"))
+        results.append(TestResult(name="ragbench_hallucination", passed=False,
+                                  details=f"Too few samples: {len(our_halluc)}", section="external"))
 
     # Overall vs adherence
     if len(our_overall) >= 5:
@@ -782,7 +818,6 @@ async def run_halueval(
     selected = list(ds)[:limit * 2]  # limit pairs
     print(f"  HaluEval: {len(selected)} samples")
 
-    our_faith: list[float] = []
     our_halluc: list[float] = []
     our_overall: list[float] = []
     gt_labels: list[float] = []
@@ -811,44 +846,31 @@ async def run_halueval(
         try:
             detail = await ingest_and_get(client, api_key, payload, sem)
             evaluation = ev(detail)
-            faith = evaluation.get("faithfulness")
             halluc = evaluation.get("hallucination_score")
             overall = evaluation.get("overall_score")
 
-            if faith is not None:
-                our_faith.append(faith)
-                our_halluc.append(halluc if halluc is not None else faith)
+            if halluc is not None:
+                our_halluc.append(halluc)
                 gt_labels.append(gt)
             if overall is not None:
                 our_overall.append(overall)
 
-            print(f"    [{i+1}/{len(selected)}] gt={'good' if gt==1.0 else 'halluc'} → faith={faith}, halluc={halluc}")
+            print(f"    [{i+1}/{len(selected)}] gt={'good' if gt==1.0 else 'halluc'} → halluc={halluc}")
         except Exception as exc:
             print(f"    [{i+1}/{len(selected)}] ERROR: {exc}")
 
     tasks = [_process(i, row) for i, row in enumerate(selected)]
     await asyncio.gather(*tasks)
 
-    if len(our_faith) >= 5:
-        r = pearson_correlation(gt_labels, our_faith)
-        cls = binary_classification(our_faith, gt_labels)
+    if len(our_halluc) >= 5:
+        r = pearson_correlation(gt_labels, our_halluc)
+        cls = binary_classification(our_halluc, gt_labels)
         passed = cls["f1"] >= 0.5 or r >= 0.4
         results.append(TestResult(
-            name="halueval_faithfulness",
-            passed=passed,
-            details=f"r={r:.3f}, Acc={cls['accuracy']:.0%}, F1={cls['f1']:.3f}, n={len(our_faith)}",
-            scores={"pearson_r": round(r, 4), **cls, "n": len(our_faith)},
-            section="external",
-        ))
-
-        # Hallucination score (same data, should mirror faithfulness)
-        r_h = pearson_correlation(gt_labels, our_halluc)
-        cls_h = binary_classification(our_halluc, gt_labels)
-        results.append(TestResult(
             name="halueval_hallucination_score",
-            passed=cls_h["f1"] >= 0.5 or r_h >= 0.4,
-            details=f"r={r_h:.3f}, Acc={cls_h['accuracy']:.0%}, F1={cls_h['f1']:.3f}, n={len(our_halluc)}",
-            scores={"pearson_r": round(r_h, 4), **cls_h, "n": len(our_halluc)},
+            passed=passed,
+            details=f"r={r:.3f}, Acc={cls['accuracy']:.0%}, F1={cls['f1']:.3f}, n={len(our_halluc)}",
+            scores={"pearson_r": round(r, 4), **cls, "n": len(our_halluc)},
             section="external",
         ))
 
@@ -873,7 +895,7 @@ async def run_halueval(
 async def run_summeval(
     client: httpx.AsyncClient, api_key: str, sem: asyncio.Semaphore, limit: int
 ) -> list[TestResult]:
-    """Compare coherence / faithfulness / helpfulness against SummEval expert annotations."""
+    """Compare coherence / hallucination_score / helpfulness against SummEval expert annotations."""
     results: list[TestResult] = []
     ds = _load_hf_dataset("mteb/summeval", None, "test")
     if ds is None:
@@ -908,7 +930,7 @@ async def run_summeval(
     print(f"  SummEval: {len(selected)} samples (diversity-selected from {len(all_rows)})")
 
     our_coherence: list[float] = []
-    our_faith: list[float] = []
+    our_halluc: list[float] = []
     our_helpfulness: list[float] = []
     our_overall: list[float] = []
     gt_coherence: list[float] = []
@@ -945,15 +967,15 @@ async def run_summeval(
             detail = await ingest_and_get(client, api_key, payload, sem)
             evaluation = ev(detail)
             coh = evaluation.get("coherence")
-            faith = evaluation.get("faithfulness")
+            halluc = evaluation.get("hallucination_score")
             helpful = evaluation.get("helpfulness")
             overall = evaluation.get("overall_score")
 
             if coh is not None and gt_coh is not None:
                 our_coherence.append(coh)
                 gt_coherence.append(gt_coh)
-            if faith is not None and gt_con is not None:
-                our_faith.append(faith)
+            if halluc is not None and gt_con is not None:
+                our_halluc.append(halluc)
                 gt_consistency.append(gt_con)
             if helpful is not None and gt_rel is not None:
                 our_helpfulness.append(helpful)
@@ -962,7 +984,7 @@ async def run_summeval(
                 our_overall.append(overall)
                 gt_overall.append(gt_avg)
 
-            print(f"    [{i+1}/{len(selected)}] gt_coh={gt_coh}, gt_con={gt_con} → coh={coh}, faith={faith}")
+            print(f"    [{i+1}/{len(selected)}] gt_coh={gt_coh}, gt_con={gt_con} → coh={coh}, halluc={halluc}")
         except Exception as exc:
             print(f"    [{i+1}/{len(selected)}] ERROR: {exc}")
 
@@ -980,19 +1002,19 @@ async def run_summeval(
             section="external",
         ))
 
-    # Faithfulness vs consistency (NOTE: may have ceiling effect)
-    if len(our_faith) >= 3:
-        r = pearson_correlation(gt_consistency, our_faith)
+    # Hallucination score vs consistency (NOTE: may have ceiling effect)
+    if len(our_halluc) >= 3:
+        r = pearson_correlation(gt_consistency, our_halluc)
         gt_mean = statistics.mean(gt_consistency) if gt_consistency else 0
         # Flag if GT has ceiling effect
         note = ""
         if gt_mean > 0.9:
             note = f" (NOTE: gt_mean={gt_mean:.2f}, possible ceiling effect)"
         results.append(TestResult(
-            name="summeval_faithfulness_vs_consistency",
+            name="summeval_hallucination_vs_consistency",
             passed=r >= 0.3 or gt_mean > 0.9,  # relaxed threshold if ceiling effect
-            details=f"r={r:.3f}, n={len(our_faith)}{note}",
-            scores={"pearson_r": round(r, 4), "gt_mean": round(gt_mean, 4), "n": len(our_faith)},
+            details=f"r={r:.3f}, n={len(our_halluc)}{note}",
+            scores={"pearson_r": round(r, 4), "gt_mean": round(gt_mean, 4), "n": len(our_halluc)},
             section="external",
         ))
 
@@ -1126,7 +1148,7 @@ async def run_consistency_tests(
     client: httpx.AsyncClient, api_key: str, sem: asyncio.Semaphore
 ) -> list[TestResult]:
     results: list[TestResult] = []
-    metrics = ["overall_score", "faithfulness", "completeness", "helpfulness", "coherence"]
+    metrics = ["overall_score", "hallucination_score", "completeness", "helpfulness", "coherence"]
 
     for t_idx, trace in enumerate(CONSISTENCY_TRACES):
         q_short = trace["question"][:40]
@@ -1267,7 +1289,7 @@ async def async_main():
 
             ext_results: list[TestResult] = []
 
-            print(f"\n  ── 3a: RAGBench (faithfulness vs adherence) ──")
+            print(f"\n  ── 3a: RAGBench (hallucination vs adherence) ──")
             ext_results.extend(await run_ragbench(client, api_key, sem, args.limit))
 
             print(f"\n  ── 3b: HaluEval (hallucination detection) ──")

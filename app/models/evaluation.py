@@ -35,6 +35,7 @@ class EvaluationResult(Base):
     hallucination_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     citation_check: Mapped[float | None] = mapped_column(Float, nullable=True)
     faithfulness_claims: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
+    hallucination_claims: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
     completeness_key_points: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
 
     # ── Context retrieval quality metrics ──

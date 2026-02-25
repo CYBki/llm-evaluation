@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     rag_metrics_model: str = "gpt-5-mini"
     prompt_version: str = "v1.0"
     rubric_version: str = "v1.0"
+    hallucination_prompt_version: str = "v1.0"
     evaluation_mode: str = "sync"  # sync | async
     redis_url: str = "redis://redis:6379/0"
     celery_broker_url: str = "redis://redis:6379/0"

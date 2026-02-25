@@ -35,7 +35,6 @@ class ScoresResponse(BaseModel):
     helpfulness: float | None = None
     completeness: float | None = None
     answer_relevancy: float | None = None
-    faithfulness: float | None = None
     context_precision: float | None = None
     context_recall: float | None = None
     hallucination_score: float | None = None
@@ -48,21 +47,23 @@ class FlagsResponse(BaseModel):
     is_deflection: bool | None = None
 
 
-class FaithfulnessClaimResponse(BaseModel):
-    claim: str
-    verdict: str
-    reason: str
-
-
 class CompletenessKeyPointResponse(BaseModel):
     point: str
     status: str
     evidence: str
 
 
+class HallucinationClaimResponse(BaseModel):
+    context_quote: str
+    context_quote_type: str
+    answer_quote: str
+    reasoning: str
+    disagreement_type: str
+
+
 class DetailsResponse(BaseModel):
     """Detailed claim-level and key-point-level breakdowns."""
-    faithfulness_claims: list[FaithfulnessClaimResponse] = []
+    hallucination_claims: list[HallucinationClaimResponse] = []
     completeness_key_points: list[CompletenessKeyPointResponse] = []
 
 

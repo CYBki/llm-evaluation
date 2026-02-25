@@ -1,12 +1,13 @@
 """
 RAG-specific evaluation metrics.
 
-Five metrics computed independently from the two-stage rubric pipeline:
+Six metrics computed independently from the two-stage rubric pipeline:
   1. answer_relevancy  – statement-level relevancy classification
-  2. faithfulness      – LLM claim extraction + context verification
-  3. hallucination_score – derived from faithfulness (1 - unsupported ratio)
-  4. citation_check    – citation tag verification against contexts
-  5. completeness      – key-point extraction + coverage verification
+  2. hallucination_score – dedicated rubric judge (two-stage CoT -> structured JSON)
+  3. citation_check    – citation tag verification against contexts
+  4. completeness      – key-point extraction + coverage verification
+  5. context_precision  – retrieval quality: are top contexts relevant?
+  6. context_recall     – retrieval coverage: are all needed facts retrieved?
 """
 
 from __future__ import annotations
@@ -30,17 +31,22 @@ from app.evaluation.prompts import (
     CONTEXT_PRECISION_SYSTEM_PROMPT,
     CONTEXT_RECALL_JSON_SCHEMA,
     CONTEXT_RECALL_SYSTEM_PROMPT,
-    FAITHFULNESS_JSON_SCHEMA,
-    FAITHFULNESS_SYSTEM_PROMPT,
+    HALLUCINATION_STAGE_1_SYSTEM_PROMPT,
+    HALLUCINATION_STAGE_2_JSON_SCHEMA,
+    HALLUCINATION_STAGE_2_SYSTEM_PROMPT,
     build_answer_relevancy_user_prompt,
     build_citation_check_user_prompt,
     build_completeness_user_prompt,
     build_context_precision_user_prompt,
     build_context_recall_user_prompt,
-    build_faithfulness_user_prompt,
+    build_hallucination_stage_1_user_prompt,
+    build_hallucination_stage_2_user_prompt,
 )
 
 logger = logging.getLogger(__name__)
+
+_HALLUCINATION_UNSUPPORTED_PENALTY = 0.6
+_HALLUCINATION_CONTRADICTION_PENALTY = 1.0
 
 
 # ── Cosine Similarity (pure Python, no numpy needed) ────────────────────
@@ -115,81 +121,78 @@ async def compute_answer_relevancy(
         return None
 
 
-# ── 2. Faithfulness (Claim Extraction + Verification) ──────────────────
+# ── 2. Hallucination Score (Dedicated Rubric Judge) ────────────────────
 
-async def compute_faithfulness(
+async def compute_hallucination_rubric(
     client: OpenAILLMClient,
     answer: str,
     contexts: list[str],
 ) -> dict[str, Any]:
     """
-    Extract factual claims from the answer and verify each against contexts.
+    Dedicated hallucination detection using a two-stage judge pipeline.
+
+    Stage 1: reasoning + claim disagreement analysis
+    Stage 2: strict JSON conversion to disagreement_claims[]
 
     Returns:
         {
-            "faithfulness": float | None,       # supported / total
-            "claims": [{"claim": str, "verdict": str, "reason": str}, ...],
+            "hallucination_score": float | None,
+            "hallucination_claims": list[dict],
         }
     """
     if not client.is_enabled or not contexts:
-        return {"faithfulness": None, "claims": []}
+        return {"hallucination_score": None, "hallucination_claims": []}
 
     try:
-        resp = await client.chat_completion(
+        stage_1 = await client.chat_completion(
             model=settings.rag_metrics_model,
-            system_prompt=FAITHFULNESS_SYSTEM_PROMPT,
-            user_prompt=build_faithfulness_user_prompt(answer, contexts),
+            system_prompt=HALLUCINATION_STAGE_1_SYSTEM_PROMPT,
+            user_prompt=build_hallucination_stage_1_user_prompt(answer, contexts),
             max_completion_tokens=4096,
-            json_schema=FAITHFULNESS_JSON_SCHEMA,
         )
 
-        logger.debug(
-            "faithfulness raw LLM response (first 300 chars): %s",
-            (resp.content or "")[:300],
+        stage_2 = await client.chat_completion(
+            model=settings.rag_metrics_model,
+            system_prompt=HALLUCINATION_STAGE_2_SYSTEM_PROMPT,
+            user_prompt=build_hallucination_stage_2_user_prompt(stage_1.content),
+            max_completion_tokens=2048,
+            json_schema=HALLUCINATION_STAGE_2_JSON_SCHEMA,
         )
 
-        parsed = _safe_parse(resp.content)
-        claims = parsed.get("claims", [])
-        if not isinstance(claims, list) or len(claims) == 0:
+        parsed = _safe_parse(stage_2.content)
+        claims = parsed.get("disagreement_claims", [])
+        if not isinstance(claims, list):
+            claims = []
+
+        if not claims:
             logger.warning(
-                "faithfulness: no claims extracted. "
-                "Parsed keys: %s | Raw response (first 500 chars): %s",
-                list(parsed.keys()),
-                (resp.content or "")[:500],
+                "hallucination_rubric: no disagreement_claims extracted. "
+                "Raw response (first 500 chars): %s",
+                (stage_2.content or "")[:500],
             )
-            return {"faithfulness": None, "claims": []}
+            return {"hallucination_score": None, "hallucination_claims": []}
 
-        supported = sum(1 for c in claims if c.get("verdict") == "supported")
+        weighted_penalty = 0.0
+        for item in claims:
+            if not isinstance(item, dict):
+                continue
+            disagreement_type = str(item.get("disagreement_type", "")).lower()
+            if disagreement_type == "unsupported claim":
+                weighted_penalty += _HALLUCINATION_UNSUPPORTED_PENALTY
+            elif disagreement_type == "confirmed contradiction":
+                weighted_penalty += _HALLUCINATION_CONTRADICTION_PENALTY
+
         total = len(claims)
-        score = round(supported / total, 4) if total > 0 else None
+        score = round(1.0 - (weighted_penalty / total), 4) if total > 0 else None
 
-        return {"faithfulness": score, "claims": claims}
+        return {
+            "hallucination_score": max(0.0, min(1.0, score)) if score is not None else None,
+            "hallucination_claims": claims,
+        }
 
     except LLMClientError:
-        logger.exception("faithfulness computation failed")
-        return {"faithfulness": None, "claims": []}
-
-
-# ── 3. Hallucination Score ─────────────────────────────────────────────
-
-def compute_hallucination_score(claims: list[dict]) -> float | None:
-    """
-    Derive hallucination score from faithfulness claims.
-
-    hallucination_score = 1.0 - (unsupported_or_contradicted / total)
-    1.0 = no hallucination (all claims supported)  → GOOD
-    0.0 = everything hallucinated                   → BAD
-
-    Returns None if no claims available.
-    """
-    if not claims:
-        return None
-
-    total = len(claims)
-    hallucinated = sum(
-        1 for c in claims if c.get("verdict") in ("not_supported", "contradicted")
-    )
-    return round(1.0 - (hallucinated / total), 4) if total > 0 else None
+        logger.exception("hallucination rubric computation failed")
+        return {"hallucination_score": None, "hallucination_claims": []}
 
 
 # ── 4. Citation Check ──────────────────────────────────────────────────
@@ -414,15 +417,15 @@ async def compute_rag_metrics(
     ground_truth: str | None = None,
 ) -> dict[str, Any]:
     """
-    Compute all 7 RAG metrics and return a flat dict.
+    Compute all 6 RAG metrics and return a flat dict.
 
     Returns:
         {
             "answer_relevancy": float | None,
-            "faithfulness": float | None,
             "hallucination_score": float | None,
+            "hallucination_claims": list[dict],
+            "hallucination_prompt_version": str,
             "citation_check": float | None,
-            "faithfulness_claims": list[dict],
             "completeness": float | None,
             "completeness_key_points": list[dict],
             "context_precision": float | None,
@@ -438,11 +441,11 @@ async def compute_rag_metrics(
     relevancy_task = asyncio.create_task(
         compute_answer_relevancy(client, question, answer, ctx)
     )
-    faithfulness_task = asyncio.create_task(
-        compute_faithfulness(client, answer, ctx)
-    )
     citation_task = asyncio.create_task(
         compute_citation_check(client, answer, ctx)
+    )
+    hallucination_task = asyncio.create_task(
+        compute_hallucination_rubric(client, answer, ctx)
     )
     completeness_task = asyncio.create_task(
         compute_completeness(client, question, answer, ctx)
@@ -455,21 +458,18 @@ async def compute_rag_metrics(
     )
 
     relevancy = await relevancy_task
-    faith_result = await faithfulness_task
     citation = await citation_task
+    hallucination_result = await hallucination_task
     comp_result = await completeness_task
     ctx_precision = await ctx_precision_task
     ctx_recall = await ctx_recall_task
 
-    # Hallucination is derived from faithfulness claims (no extra LLM call)
-    hallucination = compute_hallucination_score(faith_result.get("claims", []))
-
     return {
         "answer_relevancy": relevancy,
-        "faithfulness": faith_result.get("faithfulness"),
-        "hallucination_score": hallucination,
+        "hallucination_score": hallucination_result.get("hallucination_score"),
+        "hallucination_claims": hallucination_result.get("hallucination_claims", []),
+        "hallucination_prompt_version": settings.hallucination_prompt_version,
         "citation_check": citation,
-        "faithfulness_claims": faith_result.get("claims", []),
         "completeness": comp_result.get("completeness"),
         "completeness_key_points": comp_result.get("key_points", []),
         "context_precision": ctx_precision,

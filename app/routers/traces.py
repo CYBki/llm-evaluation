@@ -29,7 +29,6 @@ def _build_scores(evaluation) -> ScoresResponse:
         helpfulness=evaluation.helpfulness,
         completeness=evaluation.completeness,
         answer_relevancy=evaluation.answer_relevancy,
-        faithfulness=evaluation.faithfulness,
         context_precision=evaluation.context_precision,
         context_recall=evaluation.context_recall,
         hallucination_score=evaluation.hallucination_score,
@@ -46,7 +45,7 @@ def _build_flags(evaluation) -> FlagsResponse:
 
 def _build_details(evaluation) -> DetailsResponse:
     return DetailsResponse(
-        faithfulness_claims=evaluation.faithfulness_claims or [],
+        hallucination_claims=evaluation.hallucination_claims or [],
         completeness_key_points=evaluation.completeness_key_points or [],
     )
 
@@ -107,22 +106,42 @@ def _to_trace_detail_response(trace: Trace) -> TraceDetailResponse:
     )
 
 
-@router.get("", response_model=TraceListResponse)
+@router.get(
+    "",
+    response_model=TraceListResponse,
+    summary="Trace listesi",
+    description="Kullanıcının trace'lerini sayfalanmış olarak listeler. Her trace'de evaluation sonuçları (skorlar, bayraklar, özet) yer alır.",
+    responses={
+        200: {"description": "Trace listesi başarıyla döndü"},
+        401: {"description": "Geçersiz veya eksik API key"},
+    },
+)
 def get_traces(
-    page: int = Query(default=1, ge=1),
-    per_page: int = Query(default=20, ge=1, le=100),
+    page: int = Query(default=1, ge=1, description="Sayfa numarası (1'den başlar)"),
+    per_page: int = Query(default=20, ge=1, le=100, description="Sayfa başına trace sayısı (max 100)"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TraceListResponse:
+    """Kullanıcının tüm trace'lerini sayfalanmış şekilde döner."""
     traces, total = list_traces(db, current_user, page, per_page)
     items = [_to_trace_response(trace) for trace in traces]
     return TraceListResponse(items=items, page=page, per_page=per_page, total=total)
 
 
-@router.get("/{trace_id}")
+@router.get(
+    "/{trace_id}",
+    summary="Trace detayı",
+    description="Tek bir trace'in detayını döner. `detail=summary` ile özet, `detail=full` ile stage_1_reasoning, disagreement_claims dahil tüm bilgiler gelir.",
+    responses={
+        200: {"description": "Trace detayı başarıyla döndü"},
+        400: {"description": "Geçersiz trace ID formatı"},
+        401: {"description": "Geçersiz veya eksik API key"},
+        404: {"description": "Trace bulunamadı"},
+    },
+)
 def get_trace(
     trace_id: str,
-    detail: str = Query(default="summary", regex="^(summary|full)$"),
+    detail: str = Query(default="summary", regex="^(summary|full)$", description="Detay seviyesi: 'summary' veya 'full'"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TraceResponse | TraceDetailResponse:

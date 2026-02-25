@@ -18,12 +18,11 @@
    - 3.4 [helpfulness](#34-helpfulness-yardımcılık)
 4. [RAG Analitik Metrikleri (Paralel — Grounding & Kapsam)](#4-rag-analitik-metrikleri-paralel--grounding--kapsam)
    - 4.1 [answer_relevancy](#41-answer_relevancy-cevap-ilgililiği)
-   - 4.2 [faithfulness](#42-faithfulness-bağlama-sadakat)
-   - 4.3 [hallucination_score](#43-hallucination_score-halüsinasyon-skoru)
-   - 4.4 [completeness](#44-completeness-tamlık)
-   - 4.5 [citation_check](#45-citation_check-kaynak-atfı-doğruluğu)
-   - 4.6 [context_precision](#46-context_precision-bağlam-hassasiyeti)
-   - 4.7 [context_recall](#47-context_recall-bağlam-kapsamı)
+   - 4.2 [hallucination_score](#42-hallucination_score-halüsinasyon-skoru)
+   - 4.3 [completeness](#43-completeness-tamlık)
+   - 4.4 [citation_check](#44-citation_check-kaynak-atfı-doğruluğu)
+   - 4.5 [context_precision](#45-context_precision-bağlam-hassasiyeti)
+   - 4.6 [context_recall](#46-context_recall-bağlam-kapsamı)
 5. [Bayraklar (Flags)](#5-bayraklar-flags)
    - 5.1 [is_off_topic](#51-is_off_topic)
    - 5.2 [is_deflection](#52-is_deflection)
@@ -47,10 +46,10 @@ Trace (question, answer, contexts, ground_truth?)
      │       → clarity, specificity, coherence,
      │         helpfulness, is_off_topic, is_deflection
      │
-     ├──► [DAL B] RAG Analitik Metrikler (6 paralel LLM çağrısı)
+    ├──► [DAL B] RAG Analitik Metrikler (6 paralel LLM çağrısı)
      │       Model: gpt-5-mini (her biri)
      │       ├── answer_relevancy
-     │       ├── faithfulness  ──► hallucination_score (türetilmiş, LLM çağrısı yok)
+     │       ├── hallucination_score (dedicated two-stage judge)
      │       ├── citation_check
      │       ├── completeness
      │       ├── context_precision
@@ -78,15 +77,14 @@ Stage 1, **Chain-of-Thought (CoT)** formatında serbest metin reasoning üretir.
 | 3 | coherence | Rubrik | 0.0–1.0 | Cevabın iç tutarlılığı | Cevap | Stage 1 |
 | 4 | helpfulness | Rubrik | 0.0–1.0 | Cevabın faydalılığı | Cevap + Soru | Stage 1 |
 | 5 | answer_relevancy | Analitik | 0.0–1.0 | Cevap ifadelerinin soruyla ilgisi | Cevap + Soru | Ayrı LLM |
-| 6 | faithfulness | Analitik | 0.0–1.0 | Cevabın kaynaklara sadakati | Cevap + Context | Ayrı LLM |
-| 7 | hallucination_score | Türetilmiş | 0.0–1.0 | Uydurma bilgi oranı (ters) | faithfulness'tan | Yok |
-| 8 | completeness | Analitik | 0.0–1.0 | Sorunun ne kadarının karşılandığı | Soru + Cevap + Context | Ayrı LLM |
-| 9 | citation_check | Analitik | 0.0–1.0 / null | Atıf doğruluğu | Cevap + Context | Ayrı LLM |
-| 10 | context_precision | Analitik | 0.0–1.0 | Getirilen belge kalitesi | Soru + Context | Ayrı LLM |
-| 11 | context_recall | Analitik | 0.0–1.0 | Gerekli bilginin context'te varlığı | Soru + Context + GT | Ayrı LLM |
-| 12 | is_off_topic | Bayrak | true/false | Soru kapsam dışı mı | Soru | Stage 1 |
-| 13 | is_deflection | Bayrak | true/false | Cevap kaçamak mı | Cevap | Stage 1 |
-| 14 | overall_score | Bileşik | 0.0–1.0 | Genel kalite | Tüm metrikler | Yok |
+| 6 | hallucination_score | Analitik | 0.0–1.0 | Uydurma bilgi oranı (ters) | Cevap + Context | Ayrı LLM (2-stage) |
+| 7 | completeness | Analitik | 0.0–1.0 | Sorunun ne kadarının karşılandığı | Soru + Cevap + Context | Ayrı LLM |
+| 8 | citation_check | Analitik | 0.0–1.0 / null | Atıf doğruluğu | Cevap + Context | Ayrı LLM |
+| 9 | context_precision | Analitik | 0.0–1.0 | Getirilen belge kalitesi | Soru + Context | Ayrı LLM |
+| 10 | context_recall | Analitik | 0.0–1.0 | Gerekli bilginin context'te varlığı | Soru + Context + GT | Ayrı LLM |
+| 11 | is_off_topic | Bayrak | true/false | Cevap konu dışı mı | Cevap + Soru | Stage 1 |
+| 12 | is_deflection | Bayrak | true/false | Cevap kaçamak mı | Cevap | Stage 1 |
+| 13 | overall_score | Bileşik | 0.0–1.0 | Genel kalite | Tüm metrikler | Yok |
 
 ---
 
@@ -144,8 +142,8 @@ SPECIFICITY (of the ANSWER):
 - 0.0 = Completely vague, no specific information whatsoever.
 
 IS_OFF_TOPIC:
-- true  = Question is irrelevant to the system's scope.
-- false = Question is within scope.
+- true  = The ANSWER does not address the question at all; it discusses an entirely unrelated topic.
+- false = The ANSWER makes a genuine attempt to address the question, even if partially or incorrectly.
 
 COHERENCE:
 - 1.0 = Fluent, logical, no contradictions.
@@ -395,127 +393,56 @@ Skor = 1/2 = 0.50
 
 ---
 
-### 4.2 faithfulness (Bağlama Sadakat)
-
-| | |
-|---|---|
-| **Ne ölçer** | Cevaptaki iddiaların context (bilgi kaynağı) tarafından desteklenip desteklenmediği |
-| **Neye bakar** | **CEVAP + CONTEXT** |
-| **Müşteriye ne demek** | "Cevaptaki bilgiler kaynak belgelere dayanıyor mu, yoksa uydurma mı?" |
-| **Model** | gpt-5-mini |
-| **Overall score ağırlığı** | %20 (en yüksek) |
-
-**Hesaplama Formülü:**
-
-```
-faithfulness = desteklenen_iddia_sayısı / toplam_iddia_sayısı
-```
-
-**Hesaplama Adımları:**
-1. LLM, cevaptan tüm olgusal iddiaları (factual claims) çıkarır
-2. Her iddia context'e karşı doğrulanır
-3. Verdict atanır: `supported`, `not_supported` veya `contradicted`
-4. Oran hesaplanır (sadece `supported` sayılır)
-
-**Arka Planda Çalışan Prompt:**
-
-```
-You are a factual claim verification expert. Your task: extract ALL factual claims
-from the given answer and verify each against the provided context passages.
-
-Rules:
-- Extract every distinct factual assertion. Split compound sentences into individual claims.
-- Ambiguous or vague claims that cannot be clearly verified should be marked as
-  "not_supported".
-- Opinion statements or subjective assessments are NOT factual claims — skip them.
-- For each claim, assign a verdict:
-  * "supported"     — The context explicitly supports this claim.
-  * "not_supported" — The context contains no information about this claim
-                      (neither supports nor contradicts).
-  * "contradicted"  — The context explicitly contradicts this claim.
-- Provide a brief reason for each verdict referencing the relevant context passage.
-- Output ONLY JSON, nothing else.
-```
-
-**LLM'e Gönderilen User Prompt:**
-```
-ANSWER:
-{cevap}
-
-CONTEXT PASSAGES:
-[0] {context 0}
-[1] {context 1}
-...
-
-Extract every factual claim from the answer and verify each against the contexts.
-Output ONLY JSON.
-```
-
-**JSON Çıktı Yapısı:**
-```json
-{
-  "claims": [
-    {
-      "claim": "İddia metni",
-      "verdict": "supported | not_supported | contradicted",
-      "reason": "Neden bu verdict verildi"
-    }
-  ]
-}
-```
-
-**Verdict Anlamları:**
-- `supported` → Context bu iddiayı açıkça destekliyor
-- `not_supported` → Context'te bu bilgi hiç yok (desteklemiyor ama çelişmiyor da)
-- `contradicted` → Context bu iddiayı açıkça çürütüyor
-
-**Somut Örnek:**
-```
-Cevap: "Python 1991'de Guido van Rossum tarafından yaratıldı. En hızlı dildir."
-Context: "Python, Guido van Rossum tarafından oluşturulmuş, ilk kez 1991'de yayınlanmıştır."
-
-LLM çıktısı:
-  claim: "Python 1991'de yaratıldı"            → supported (contextte var)
-  claim: "Guido van Rossum tarafından yaratıldı" → supported (contextte var)
-  claim: "En hızlı dildir"                      → not_supported (contextte hız bilgisi yok)
-
-Skor = 2/3 = 0.6667
-```
-
-**Özel Durum:** Context listesi boşsa → faithfulness `null` döner (ölçülemez).
-
----
-
-### 4.3 hallucination_score (Halüsinasyon Skoru)
+### 4.2 hallucination_score (Halüsinasyon Skoru)
 
 | | |
 |---|---|
 | **Ne ölçer** | Cevaptaki uydurma bilgi oranı (**ters çevrilmiş**: 1.0 = iyi) |
-| **Neye bakar** | faithfulness claim'lerinden türetilir |
+| **Neye bakar** | **CEVAP + CONTEXT** üzerinde claim-level disagreement analizi |
 | **Müşteriye ne demek** | "Ne kadar az uydurma var? 1.0 = hiç uydurma yok, 0.0 = tamamen uydurma" |
-| **Model** | ⚠️ **Ek LLM çağrısı yok** — matematiksel türetme |
-| **Overall score ağırlığı** | Dahil değil (faithfulness ile çift sayılmasın diye) |
+| **Model** | gpt-5-mini (dedicated two-stage judge) |
+| **Overall score ağırlığı** | %25 (en yüksek) |
 
 **Hesaplama Formülü:**
 
 ```
-hallucination_score = 1.0 - (not_supported_sayısı + contradicted_sayısı) / toplam_iddia
+hallucination_score = 1.0 - (
+  0.6 × unsupported_claim_sayısı +
+  1.0 × confirmed_contradiction_sayısı
+) / toplam_claim
 ```
 
-**Faithfulness ile ilişkisi:**
-- faithfulness: "ne kadarı destekleniyor?" → yüksek = iyi
-- hallucination_score: "ne kadar az hallucination var?" → yüksek = iyi
-- İkisi aynı claim verilerinden türer, ek LLM çağrısı yoktur
+**Nasıl çalışır (Datadog-style two-stage pipeline):**
+1. Stage 1: Cevaptan atomic claim'ler çıkarılır ve her claim için `agreement | unsupported claim | confirmed contradiction` etiketi üretilir (CoT reasoning ile).
+2. Stage 2: Bu reasoning metni strict JSON şemasına dönüştürülür (`hallucination_claims[]`).
+3. Skor, disagreement tiplerinin oranından deterministik hesaplanır.
+
+**Ağırlıklı Ceza Sistemi:**
+- `agreement` → 0 ceza (destekleniyor)
+- `unsupported claim` → 0.6 ceza (context'te bilgi yok ama çelişmiyor)
+- `confirmed contradiction` → 1.0 ceza (context ile açık çelişki)
+
+> **Neden ağırlıklı?** "Context'te bilgi yok" ile "context'in söylediğine aykırı" farklı ciddiyet düzeyleridir. Unsupported claim her zaman hallucination olmayabilir (doğru ama kaynak dışı bilgi olabilir), contradiction ise kesin hata.
+
+**Paraphrase / Borderline Kılavuzu:**
+Prompt, LLM'e şu ek yönlendirmeyi verir:
+- Cevap context'i **farklı kelimelerle özetliyorsa** veya **makul bir çıkarım yapıyorsa** → `agreement`. Birebir kelime eşleşmesi gerekmez.
+- `unsupported claim` sadece context konuyla ilgili **hiçbir şey söylemiyorsa** kullanılır.
+- `confirmed contradiction` sadece context'in **açıkça tersini ifade ettiği** durumlarda kullanılır.
+
+> **Örnek:** Context "typical use cases include session caching, pub/sub, leaderboards" → cevap "Redis çoğunlukla cache olarak kullanılır" → `agreement` (context'in özeti).
 
 **Somut Örnek:**
 ```
-5 iddia: 3 supported + 1 not_supported + 1 contradicted
-hallucination_score = 1.0 - (1+1)/5 = 1.0 - 0.4 = 0.60
+5 iddia: 3 agreement + 1 unsupported + 1 contradiction
+hallucination_score = 1.0 - (0.6×1 + 1.0×1) / 5 = 1.0 - 0.32 = 0.68
 ```
+
+**Özel Durum:** Context listesi boşsa → hallucination_score `null` döner (ölçülemez).
 
 ---
 
-### 4.4 completeness (Tamlık)
+### 4.3 completeness (Tamlık)
 
 | | |
 |---|---|
@@ -604,7 +531,7 @@ Skor = (1.0 + 1.0 + 0.5) / 3 = 0.833
 
 ---
 
-### 4.5 citation_check (Kaynak Atfı Doğruluğu)
+### 4.4 citation_check (Kaynak Atfı Doğruluğu)
 
 | | |
 |---|---|
@@ -686,7 +613,7 @@ If no citations exist, return an empty array. Output ONLY JSON.
 
 ---
 
-### 4.6 context_precision (Bağlam Hassasiyeti)
+### 4.5 context_precision (Bağlam Hassasiyeti)
 
 | | |
 |---|---|
@@ -761,7 +688,7 @@ Skor = 1/2 = 0.50
 
 ---
 
-### 4.7 context_recall (Bağlam Kapsamı)
+### 4.6 context_recall (Bağlam Kapsamı)
 
 | | |
 |---|---|
@@ -869,16 +796,21 @@ Bayraklar sayısal skor değil, `true` / `false` değer döner. Stage 1 rubrik d
 
 | | |
 |---|---|
-| **Ne tespit eder** | Sorulan sorunun sistemin kapsamı dışında olup olmadığı |
-| **Neye bakar** | **SORUYA** bakar |
-| **Müşteriye ne demek** | "Kullanıcı teknik destek botuna yemek tarifi sormuş mu?" |
+| **Ne tespit eder** | Cevabın soruyla tamamen alakasız bir konudan bahsedip bahsetmediği |
+| **Neye bakar** | **CEVAP + SORU** birlikte |
+| **Müşteriye ne demek** | "Sistem tamamen alakasız bir cevap mı vermiş?" |
 | **Overall score'a etkisi** | **Doğrudan:** `is_off_topic=true` olduğunda overall_score **max 0.20** ile sınırlandırılır (cap) |
 
 **Rubrik:**
-- `true` = Soru sistemin kapsamı dışında
-- `false` = Soru kapsam içinde
+- `true` = Cevap soruyu hiç ele almıyor; tamamen alakasız bir konudan bahsediyor
+- `false` = Cevap soruyu cevaplamaya çalışıyor, kısmen veya yanlış olsa bile
 
 **Neden cap uygulanıyor?** İçerik tamamen konu dışıysa cevap ne kadar akıcı olursa olsun gerçek kalite düşüktür. Bu cap, alakasız ama "iyi yazılmış" cevapların overall_score'u şişirmesini engeller.
+
+**Deterministik hard-override (off-topic kaçırmalarını azaltma):**
+- LLM `is_off_topic` değerini yanlış üretse bile, kod tarafında ek bir kontrol yapılır.
+- Eğer `answer_relevancy == 0.0` **ve** `helpfulness == 0.0` ise `is_off_topic = true` olarak **zorlanır** (hard-override, LLM'in boolean'ından önce çalışır).
+- Bu durumda off-topic cap otomatik devreye girer (`overall_score <= 0.20`).
 
 ### 5.2 is_deflection
 
@@ -917,9 +849,9 @@ overall_score = Σ(metrik_değeri × ağırlık) / Σ(ağırlık)
 
 | Metrik | Ağırlık | Yüzde | Neden bu ağırlık? |
 |---|---:|---:|---|
-| faithfulness | 0.20 | %20 | Kaynaklara sadakat en kritik boyut |
+| hallucination_score | 0.25 | %25 | Kaynaklara sadakat ve uydurma tespiti en kritik boyut |
 | completeness | 0.15 | %15 | Eksik cevap kullanıcıyı tatmin etmez |
-| answer_relevancy | 0.15 | %15 | Konu dışı dolgu kaliteyi düşürür |
+| answer_relevancy | 0.10 | %10 | Konu dışı dolgu kaliteyi düşürür |
 | context_precision | 0.15 | %15 | Retriever kalitesi cevabı doğrudan etkiler |
 | context_recall | 0.10 | %10 | Bilgi eksikliği doğru cevabı imkansız kılar |
 | coherence | 0.10 | %10 | İç tutarlılık önemli ama az görülen sorun |
@@ -930,7 +862,6 @@ overall_score = Σ(metrik_değeri × ağırlık) / Σ(ağırlık)
 **Dahil olmayanlar ve nedenleri:**
 - `specificity` → Her soru somut detay gerektirmez
 - `citation_check` → Opsiyonel; her cevap atıf içermez
-- `hallucination_score` → faithfulness'tan türetilmiş (çift sayılmasın)
 
 ### Score Cap Kuralları
 
@@ -952,12 +883,14 @@ if has_contradiction and score is not None:
   score = min(score, _CONTRADICTION_SCORE_CAP)
 ```
 
-**has_contradiction nasıl hesaplanır?** `faithfulness_claims` içinde en az bir claim `verdict="contradicted"` ise `has_contradiction=true` olur.
+**has_contradiction nasıl hesaplanır?** `hallucination_claims` içinde en az bir claim `disagreement_type="confirmed contradiction"` ise `has_contradiction=true` olur.
 
 **Neden?**
 - `is_deflection`: Geçiştirme cevapların yapay şekilde yüksek skor almasını önler.
 - `is_off_topic`: Konu dışı cevapları, yazım kalitesi yüksek olsa da düşük bantta tutar.
 - `contradicted`: Context ile açık çelişen iddialarda skorun gereksiz yükselmesini engeller.
+
+**Off-topic hard-override neden gerekli?** Bazı örneklerde LLM, bariz alakasız cevabı `is_off_topic=false` olarak etiketleyebiliyor. Hard-override (answer_relevancy=0 + helpfulness=0 kontrolü) LLM'in boolean kararından **önce** çalışır ve bu false negative durumlarını tamamen ortadan kaldırır.
 
 Birden fazla kural aynı anda aktifse en düşük cap uygulanır (ardışık `min()` davranışı).
 
@@ -983,7 +916,6 @@ Metrik skorlarının yanı sıra her değerlendirme şu ek bilgileri de döner:
 | `reasoning_summary` | Stage 1'in değerlendirme özeti (Türkçe/İngilizce) |
 | `evaluation_confidence` | LLM'in kendi değerlendirmesine ne kadar güvendiği (0.0–1.0) |
 | `disagreement_claims` | Cevap ile context arasındaki çelişki detayları |
-| `faithfulness_claims` | Her iddianın claim, verdict, reason detayı |
 | `completeness_key_points` | Her kilit noktanın point, status, evidence detayı |
 | `stage_1_reasoning` | Stage 1 tam CoT reasoning metni |
 | `model_used` | Hangi modellerin kullanıldığı (ör: "gpt-5.2 + gpt-5-mini") |
@@ -1001,13 +933,10 @@ H: Hayır. clarity yalnızca **cevabın** anlaşılırlığını ölçer. Sorunu
 H: Şu an yok. `query_clarity`, `query_specificity`, `query_answerability` gibi sorgu kalitesi metrikleri ileride eklenebilir.
 
 **S: Aynı soruyu farklı formulasyonlarla sorsam hangi metrikler değişir?**  
-C: `answer_relevancy` ve `completeness` değişebilir (çünkü değerlendirme soruya bağlı). `clarity`, `coherence`, `faithfulness` aynı kalır (çünkü cevap aynı).
+C: `answer_relevancy` ve `completeness` değişebilir (çünkü değerlendirme soruya bağlı). `clarity`, `coherence`, `hallucination_score` aynı kalır (çünkü cevap aynı).
 
 **S: citation_check neden bazen null?**  
 C: Cevapta hiçbir atıf formatı (`[1]`, `[Source 1]` vb.) tespit edilmezse metrik uygulanmaz ve `null` döner. Bu bir hata değil, metriğin o cevap için geçerli olmadığı anlamına gelir.
-
-**S: hallucination_score ile faithfulness farkı ne?**  
-C: Bakış açısı farkı. `faithfulness` = "ne kadarı **destekleniyor**?", `hallucination_score` = "ne kadar az **uydurma** var?". İkisi aynı claim analizinden türer; ayrı LLM çağrısı yoktur.
 
 **S: context_precision vs context_recall farkı ne?**  
 C: `context_precision` = "Getirilen belgelerin ne kadarı **işe yarıyor?**" (gürültü ölçer — gereksiz belge var mı?). `context_recall` = "Gerekli bilgilerin ne kadarı getirilen **belgelerde var?**" (eksiklik ölçer — gerekli belge getirilmemiş mi?).
@@ -1019,7 +948,7 @@ C: Hayır. Overall score **tamamen kodda** ağırlıklı ortalama olarak hesapla
 C: Evet/hayır soruları, tanım soruları gibi türlerde yüksek specificity beklenmez. Her soru tipi için adil bir genel skor oluşturmak adına bağımsız sinyal olarak raporlanır.
 
 **S: Toplamda kaç LLM çağrısı yapılıyor?**  
-C: **8 adet** (normal akışta): Stage 1 (1) + Stage 2 (1) + 6 RAG metriği. Stage 2 JSON parse hatası olursa +1-3 retry, toplamda en fazla 11.
+C: **8 adet** (normal akışta): Stage 1 (1) + Stage 2 (1) + 6 RAG metriği. Stage 2 JSON parse hatası olursa +1-3 retry olabilir.
 
 **S: Hangi modeller kullanılıyor?**  
 C: Stage 1: `gpt-5.2` (16384 max token), Stage 2 + tüm RAG metrikleri: `gpt-5-mini` (1024-4096 max token).
@@ -1036,7 +965,6 @@ C: Stage 1: `gpt-5.2` (16384 max token), Stage 2 + tüm RAG metrikleri: `gpt-5-m
 | Stage 2 JSON dönüşüm prompt'u | `app/evaluation/prompts.py` | `STAGE_2_SYSTEM_PROMPT` |
 | Stage 2 repair prompt'u | `app/evaluation/prompts.py` | `STAGE_2_REPAIR_SYSTEM_PROMPT` |
 | JSON schema (Stage 2 çıktı) | `app/evaluation/prompts.py` | `STAGE_2_JSON_SCHEMA` |
-| Faithfulness prompt + schema | `app/evaluation/prompts.py` | `FAITHFULNESS_SYSTEM_PROMPT`, `FAITHFULNESS_JSON_SCHEMA` |
 | Answer relevancy prompt + schema | `app/evaluation/prompts.py` | `ANSWER_RELEVANCY_SYSTEM_PROMPT`, `ANSWER_RELEVANCY_JSON_SCHEMA` |
 | Completeness prompt + schema | `app/evaluation/prompts.py` | `COMPLETENESS_SYSTEM_PROMPT`, `COMPLETENESS_JSON_SCHEMA` |
 | Citation check prompt + schema | `app/evaluation/prompts.py` | `CITATION_CHECK_SYSTEM_PROMPT`, `CITATION_CHECK_JSON_SCHEMA` |
@@ -1045,10 +973,11 @@ C: Stage 1: `gpt-5.2` (16384 max token), Stage 2 + tüm RAG metrikleri: `gpt-5-m
 | Overall score ağırlıkları | `app/evaluation/evaluator.py` | `_OVERALL_WEIGHTS` |
 | Score cap sabitleri | `app/evaluation/evaluator.py` | `_DEFLECTION_SCORE_CAP`, `_OFF_TOPIC_SCORE_CAP`, `_CONTRADICTION_SCORE_CAP` |
 | Çelişki tespiti yardımcı fonksiyonu | `app/evaluation/evaluator.py` | `_has_contradicted_claims()` |
+| Off-topic hard-override yardımcı fonksiyonu | `app/evaluation/evaluator.py` | `_coerce_off_topic_flag()` |
 | Overall score hesaplama | `app/evaluation/evaluator.py` | `_compute_overall_score()` |
 | Evaluation ana giriş noktası | `app/evaluation/evaluator.py` | `evaluate_trace()` |
 | RAG metrics orchestrator | `app/evaluation/rag_metrics.py` | `compute_rag_metrics()` |
-| Hallucination türetme | `app/evaluation/rag_metrics.py` | `compute_hallucination_score()` |
+| Hallucination dedicated judge | `app/evaluation/rag_metrics.py` | `compute_hallucination_rubric()` |
 | Atıf format tespiti | `app/evaluation/rag_metrics.py` | `has_citations()`, `_CITATION_PATTERN` |
 | LLM client | `app/evaluation/llm_client.py` | `OpenAILLMClient.chat_completion()` |
-| Model konfigürasyonu | `app/config.py` | `stage_1_model`, `stage_2_model`, `rag_metrics_model` |
+| Model + rollout konfigürasyonu | `app/config.py` | `stage_1_model`, `stage_2_model`, `rag_metrics_model`, `hallucination_prompt_version` |
