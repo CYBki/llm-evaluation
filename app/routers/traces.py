@@ -7,15 +7,20 @@ from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.trace import Trace
 from app.models.user import User
+from app.metrics.definitions import get_verdict
 from app.schemas.ingest import (
     DetailsResponse,
     EvaluationDetailResponse,
     EvaluationResponse,
     FlagsResponse,
+    MultiAgentEvaluationDetailResponse,
+    MultiAgentEvaluationResponse,
     ScoresResponse,
+    StepEvaluationResponse,
     TraceDetailResponse,
     TraceListResponse,
     TraceResponse,
+    VerdictsResponse,
 )
 from app.services.ingest_service import get_trace_by_id, list_traces
 
@@ -50,8 +55,78 @@ def _build_details(evaluation) -> DetailsResponse:
     )
 
 
+def _build_verdicts(evaluation) -> VerdictsResponse:
+    return VerdictsResponse(
+        overall_score=get_verdict("overall_score", evaluation.overall_score),
+        clarity=get_verdict("clarity", evaluation.clarity),
+        coherence=get_verdict("coherence", evaluation.coherence),
+        helpfulness=get_verdict("helpfulness", evaluation.helpfulness),
+        completeness=get_verdict("completeness", evaluation.completeness),
+        answer_relevancy=get_verdict("answer_relevancy", evaluation.answer_relevancy),
+        context_precision=get_verdict("context_precision", evaluation.context_precision),
+        context_recall=get_verdict("context_recall", evaluation.context_recall),
+        hallucination_score=get_verdict("hallucination_score", evaluation.hallucination_score),
+        citation_check=get_verdict("citation_check", evaluation.citation_check),
+    )
+
+
+def _build_step_evaluations(trace: Trace) -> list[StepEvaluationResponse]:
+    """Build step-level evaluation responses from trace's step_evaluation_results."""
+    step_evals = getattr(trace, "step_evaluation_results", None)
+    if not step_evals:
+        return []
+    return [
+        StepEvaluationResponse(
+            step_index=se.step_index,
+            agent_name=se.agent_name,
+            overall_score=se.overall_score,
+            confidence=se.evaluation_confidence,
+            scores=_build_scores(se),
+            verdicts=_build_verdicts(se),
+            flags=_build_flags(se),
+            reasoning_summary=se.reasoning_summary,
+            details=_build_details(se),
+        )
+        for se in step_evals
+    ]
+
+
+def _is_multi_agent(trace: Trace) -> bool:
+    """Check if trace has step evaluation results."""
+    step_evals = getattr(trace, "step_evaluation_results", None)
+    return bool(step_evals)
+
+
 def _to_trace_response(trace: Trace) -> TraceResponse:
     evaluation = trace.evaluation_result
+    is_multi = _is_multi_agent(trace)
+
+    if evaluation and is_multi:
+        eval_response = MultiAgentEvaluationResponse(
+            overall_score=evaluation.overall_score,
+            confidence=evaluation.evaluation_confidence,
+            scores=_build_scores(evaluation),
+            verdicts=_build_verdicts(evaluation),
+            flags=_build_flags(evaluation),
+            reasoning_summary=evaluation.reasoning_summary,
+            details=_build_details(evaluation),
+            pipeline_score=evaluation.pipeline_score,
+            pipeline_verdict=get_verdict("overall_score", evaluation.pipeline_score),
+            step_evaluations=_build_step_evaluations(trace),
+        )
+    elif evaluation:
+        eval_response = EvaluationResponse(
+            overall_score=evaluation.overall_score,
+            confidence=evaluation.evaluation_confidence,
+            scores=_build_scores(evaluation),
+            verdicts=_build_verdicts(evaluation),
+            flags=_build_flags(evaluation),
+            reasoning_summary=evaluation.reasoning_summary,
+            details=_build_details(evaluation),
+        )
+    else:
+        eval_response = None
+
     return TraceResponse(
         id=str(trace.id),
         question=trace.question,
@@ -60,23 +135,52 @@ def _to_trace_response(trace: Trace) -> TraceResponse:
         metadata=trace.meta,
         status=trace.status,
         created_at=trace.created_at,
-        evaluation=(
-            EvaluationResponse(
-                overall_score=evaluation.overall_score,
-                confidence=evaluation.evaluation_confidence,
-                scores=_build_scores(evaluation),
-                flags=_build_flags(evaluation),
-                reasoning_summary=evaluation.reasoning_summary,
-                details=_build_details(evaluation),
-            )
-            if evaluation
-            else None
-        ),
+        evaluation=eval_response,
     )
 
 
 def _to_trace_detail_response(trace: Trace) -> TraceDetailResponse:
     evaluation = trace.evaluation_result
+    is_multi = _is_multi_agent(trace)
+
+    if evaluation and is_multi:
+        eval_response = MultiAgentEvaluationDetailResponse(
+            overall_score=evaluation.overall_score,
+            confidence=evaluation.evaluation_confidence,
+            scores=_build_scores(evaluation),
+            verdicts=_build_verdicts(evaluation),
+            flags=_build_flags(evaluation),
+            reasoning_summary=evaluation.reasoning_summary,
+            details=_build_details(evaluation),
+            specificity=evaluation.specificity,
+            stage_1_reasoning=evaluation.stage_1_reasoning,
+            disagreement_claims=evaluation.disagreement_claims,
+            model_used=evaluation.model_used,
+            prompt_version=evaluation.prompt_version,
+            rubric_version=evaluation.rubric_version,
+            pipeline_score=evaluation.pipeline_score,
+            pipeline_verdict=get_verdict("overall_score", evaluation.pipeline_score),
+            step_evaluations=_build_step_evaluations(trace),
+        )
+    elif evaluation:
+        eval_response = EvaluationDetailResponse(
+            overall_score=evaluation.overall_score,
+            confidence=evaluation.evaluation_confidence,
+            scores=_build_scores(evaluation),
+            verdicts=_build_verdicts(evaluation),
+            flags=_build_flags(evaluation),
+            reasoning_summary=evaluation.reasoning_summary,
+            details=_build_details(evaluation),
+            specificity=evaluation.specificity,
+            stage_1_reasoning=evaluation.stage_1_reasoning,
+            disagreement_claims=evaluation.disagreement_claims,
+            model_used=evaluation.model_used,
+            prompt_version=evaluation.prompt_version,
+            rubric_version=evaluation.rubric_version,
+        )
+    else:
+        eval_response = None
+
     return TraceDetailResponse(
         id=str(trace.id),
         question=trace.question,
@@ -85,24 +189,7 @@ def _to_trace_detail_response(trace: Trace) -> TraceDetailResponse:
         metadata=trace.meta,
         status=trace.status,
         created_at=trace.created_at,
-        evaluation=(
-            EvaluationDetailResponse(
-                overall_score=evaluation.overall_score,
-                confidence=evaluation.evaluation_confidence,
-                scores=_build_scores(evaluation),
-                flags=_build_flags(evaluation),
-                reasoning_summary=evaluation.reasoning_summary,
-                details=_build_details(evaluation),
-                specificity=evaluation.specificity,
-                stage_1_reasoning=evaluation.stage_1_reasoning,
-                disagreement_claims=evaluation.disagreement_claims,
-                model_used=evaluation.model_used,
-                prompt_version=evaluation.prompt_version,
-                rubric_version=evaluation.rubric_version,
-            )
-            if evaluation
-            else None
-        ),
+        evaluation=eval_response,
     )
 
 

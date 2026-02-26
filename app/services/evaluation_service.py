@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import SessionLocal
 from app.evaluation import evaluate_trace
-from app.models.evaluation import EvaluationResult
+from app.models.evaluation import EvaluationResult, StepEvaluationResult
 from app.models.trace import Trace
 
 logger = logging.getLogger(__name__)
@@ -38,6 +38,67 @@ def enqueue_trace_evaluation(trace_id: UUID | str) -> None:
     evaluate_trace_and_persist(trace_id_str)
 
 
+def _apply_result_to_evaluation(evaluation: EvaluationResult, result: dict) -> None:
+    """Map eval result dict fields onto an EvaluationResult ORM object."""
+    evaluation.clarity = result.get("clarity")
+    evaluation.specificity = result.get("specificity")
+    evaluation.is_off_topic = result.get("is_off_topic")
+    evaluation.completeness = result.get("completeness")
+    evaluation.coherence = result.get("coherence")
+    evaluation.helpfulness = result.get("helpfulness")
+    evaluation.is_deflection = result.get("is_deflection")
+    evaluation.overall_score = result.get("overall_score")
+    evaluation.evaluation_confidence = result.get("evaluation_confidence")
+    evaluation.reasoning_summary = result.get("reasoning_summary")
+    evaluation.disagreement_claims = result.get("disagreement_claims")
+    evaluation.stage_1_reasoning = result.get("stage_1_reasoning")
+    evaluation.raw_response = result.get("raw_response")
+    evaluation.model_used = result.get("model_used")
+    evaluation.prompt_version = result.get("prompt_version")
+    evaluation.rubric_version = result.get("rubric_version")
+    # RAG-specific
+    evaluation.answer_relevancy = result.get("answer_relevancy")
+    evaluation.hallucination_score = result.get("hallucination_score")
+    evaluation.citation_check = result.get("citation_check")
+    evaluation.hallucination_claims = result.get("hallucination_claims")
+    evaluation.completeness_key_points = result.get("completeness_key_points")
+    evaluation.context_precision = result.get("context_precision")
+    evaluation.context_recall = result.get("context_recall")
+
+
+def _apply_result_to_step(step_eval: StepEvaluationResult, result: dict) -> None:
+    """Map eval result dict fields onto a StepEvaluationResult ORM object."""
+    step_eval.clarity = result.get("clarity")
+    step_eval.specificity = result.get("specificity")
+    step_eval.is_off_topic = result.get("is_off_topic")
+    step_eval.completeness = result.get("completeness")
+    step_eval.coherence = result.get("coherence")
+    step_eval.helpfulness = result.get("helpfulness")
+    step_eval.is_deflection = result.get("is_deflection")
+    step_eval.overall_score = result.get("overall_score")
+    step_eval.evaluation_confidence = result.get("evaluation_confidence")
+    step_eval.reasoning_summary = result.get("reasoning_summary")
+    step_eval.answer_relevancy = result.get("answer_relevancy")
+    step_eval.hallucination_score = result.get("hallucination_score")
+    step_eval.citation_check = result.get("citation_check")
+    step_eval.hallucination_claims = result.get("hallucination_claims")
+    step_eval.completeness_key_points = result.get("completeness_key_points")
+    step_eval.context_precision = result.get("context_precision")
+    step_eval.context_recall = result.get("context_recall")
+    step_eval.model_used = result.get("model_used")
+
+
+def _extract_steps(trace: Trace) -> list[dict] | None:
+    """Return steps list from trace metadata, or None."""
+    meta = trace.meta
+    if not meta:
+        return None
+    steps = meta.get("steps")
+    if not steps or not isinstance(steps, list):
+        return None
+    return steps
+
+
 def evaluate_trace_and_persist(trace_id: str) -> None:
     with _get_db() as db:
         trace = db.query(Trace).filter(Trace.id == trace_id).first()
@@ -45,46 +106,90 @@ def evaluate_trace_and_persist(trace_id: str) -> None:
             logger.warning("Trace %s not found for evaluation", trace_id)
             return
 
+        loop = asyncio.new_event_loop()
+
+        # ── 1. Trace-level evaluation (final answer) ──
         try:
-            loop = asyncio.new_event_loop()
-            result = loop.run_until_complete(evaluate_trace(trace.question, trace.answer, trace.contexts, trace.ground_truth))
-            loop.close()
+            result = loop.run_until_complete(
+                evaluate_trace(trace.question, trace.answer, trace.contexts, trace.ground_truth)
+            )
         except Exception:
             logger.exception("Evaluation failed for trace %s", trace_id)
             trace.status = "failed"
             db.add(trace)
             db.commit()
+            loop.close()
             return
 
         evaluation = db.query(EvaluationResult).filter(EvaluationResult.trace_id == trace.id).first()
         if not evaluation:
             evaluation = EvaluationResult(trace_id=trace.id)
 
-        evaluation.clarity = result.get("clarity")
-        evaluation.specificity = result.get("specificity")
-        evaluation.is_off_topic = result.get("is_off_topic")
-        evaluation.completeness = result.get("completeness")
-        evaluation.coherence = result.get("coherence")
-        evaluation.helpfulness = result.get("helpfulness")
-        evaluation.is_deflection = result.get("is_deflection")
-        evaluation.overall_score = result.get("overall_score")
-        evaluation.evaluation_confidence = result.get("evaluation_confidence")
-        evaluation.reasoning_summary = result.get("reasoning_summary")
-        evaluation.disagreement_claims = result.get("disagreement_claims")
-        evaluation.stage_1_reasoning = result.get("stage_1_reasoning")
-        evaluation.raw_response = result.get("raw_response")
-        evaluation.model_used = result.get("model_used")
-        evaluation.prompt_version = result.get("prompt_version")
-        evaluation.rubric_version = result.get("rubric_version")
+        _apply_result_to_evaluation(evaluation, result)
 
-        # RAG-specific metrics
-        evaluation.answer_relevancy = result.get("answer_relevancy")
-        evaluation.hallucination_score = result.get("hallucination_score")
-        evaluation.citation_check = result.get("citation_check")
-        evaluation.hallucination_claims = result.get("hallucination_claims")
-        evaluation.completeness_key_points = result.get("completeness_key_points")
-        evaluation.context_precision = result.get("context_precision")
-        evaluation.context_recall = result.get("context_recall")
+        # ── 2. Step-level evaluation (if multi-agent) ──
+        steps = _extract_steps(trace)
+        if steps:
+            logger.info("Multi-agent trace %s detected with %d steps — running step-level eval", trace_id, len(steps))
+
+            # Clear previous step evaluations (re-evaluation case)
+            db.query(StepEvaluationResult).filter(StepEvaluationResult.trace_id == trace.id).delete()
+
+            step_scores: list[float] = []
+
+            for step in steps:
+                step_index = step.get("step_index", 0)
+                agent_name = step.get("agent", f"step_{step_index}")
+                step_input = step.get("input", "")
+                step_output = step.get("output", "")
+                step_contexts = step.get("contexts")
+
+                try:
+                    step_result = loop.run_until_complete(
+                        evaluate_trace(
+                            question=step_input,
+                            answer=step_output,
+                            contexts=step_contexts,
+                            ground_truth=None,
+                        )
+                    )
+                except Exception:
+                    logger.exception("Step %d eval failed for trace %s", step_index, trace_id)
+                    continue
+
+                step_eval = StepEvaluationResult(
+                    trace_id=trace.id,
+                    step_index=step_index,
+                    agent_name=agent_name,
+                )
+                _apply_result_to_step(step_eval, step_result)
+                db.add(step_eval)
+
+                if step_eval.overall_score is not None:
+                    step_scores.append(step_eval.overall_score)
+
+                logger.info(
+                    "Step %d (%s) eval done for trace %s — score=%.2f",
+                    step_index,
+                    agent_name,
+                    trace_id,
+                    step_eval.overall_score or 0.0,
+                )
+
+            # ── 3. Pipeline score = 50% trace + 50% avg(step scores) ──
+            if step_scores:
+                avg_step = sum(step_scores) / len(step_scores)
+                trace_score = evaluation.overall_score or 0.0
+                evaluation.pipeline_score = round(0.5 * trace_score + 0.5 * avg_step, 4)
+                logger.info(
+                    "Pipeline score for trace %s: %.4f (trace=%.2f, avg_step=%.2f)",
+                    trace_id,
+                    evaluation.pipeline_score,
+                    trace_score,
+                    avg_step,
+                )
+
+        loop.close()
 
         trace.status = "completed" if _is_successful_result(result) else "failed"
 

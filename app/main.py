@@ -18,6 +18,7 @@ from app.database import SessionLocal
 from app.exceptions import AppError
 from app.routers.auth import router as auth_router
 from app.routers.ingest import router as ingest_router
+from app.routers.metrics import router as metrics_router
 from app.routers.traces import router as traces_router
 
 # ── Structured JSON logging ──────────────────────────────────────────────
@@ -92,6 +93,10 @@ app = FastAPI(
         {
             "name": "traces",
             "description": "Trace listeleme ve detay görüntüleme. Evaluation sonuçları burada döner.",
+        },
+        {
+            "name": "metrics",
+            "description": "Metrik tanımları, açıklamaları ve threshold bilgileri.",
         },
         {
             "name": "health",
@@ -178,6 +183,7 @@ async def request_context_middleware(request: Request, call_next):
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(ingest_router, prefix="/api/v1/ingest", tags=["ingest"])
 app.include_router(traces_router, prefix="/api/v1/traces", tags=["traces"])
+app.include_router(metrics_router, prefix="/api/v1/metrics", tags=["metrics"])
 
 
 @app.get("/health", tags=["health"], summary="Sistem sağlık kontrolü", description="API ve veritabanı durumunu kontrol eder.")

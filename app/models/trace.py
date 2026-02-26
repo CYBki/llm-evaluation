@@ -23,3 +23,4 @@ class Trace(Base):
 
     user = relationship("User", back_populates="traces")
     evaluation_result = relationship("EvaluationResult", back_populates="trace", uselist=False)
+    step_evaluation_results = relationship("StepEvaluationResult", back_populates="trace", order_by="StepEvaluationResult.step_index")

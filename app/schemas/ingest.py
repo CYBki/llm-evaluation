@@ -67,11 +67,26 @@ class DetailsResponse(BaseModel):
     completeness_key_points: list[CompletenessKeyPointResponse] = []
 
 
+class VerdictsResponse(BaseModel):
+    """Verdict labels (good / warning / bad / critical) per metric."""
+    overall_score: str | None = None
+    clarity: str | None = None
+    coherence: str | None = None
+    helpfulness: str | None = None
+    completeness: str | None = None
+    answer_relevancy: str | None = None
+    context_precision: str | None = None
+    context_recall: str | None = None
+    hallucination_score: str | None = None
+    citation_check: str | None = None
+
+
 class EvaluationResponse(BaseModel):
     """Clean user-facing evaluation output."""
     overall_score: float | None = None
     confidence: float | None = None
     scores: ScoresResponse
+    verdicts: VerdictsResponse | None = None
     flags: FlagsResponse
     reasoning_summary: str | None = None
     details: DetailsResponse
@@ -87,6 +102,35 @@ class EvaluationDetailResponse(EvaluationResponse):
     rubric_version: str | None = None
 
 
+# ── Step (Agent) Evaluation ────────────────────────────────────────────
+
+class StepEvaluationResponse(BaseModel):
+    """Per-agent-step evaluation result using the same metrics."""
+    step_index: int
+    agent_name: str
+    overall_score: float | None = None
+    confidence: float | None = None
+    scores: ScoresResponse
+    verdicts: VerdictsResponse | None = None
+    flags: FlagsResponse
+    reasoning_summary: str | None = None
+    details: DetailsResponse
+
+
+class MultiAgentEvaluationResponse(EvaluationResponse):
+    """Evaluation response extended with step-level results and pipeline score."""
+    pipeline_score: float | None = None
+    pipeline_verdict: str | None = None
+    step_evaluations: list[StepEvaluationResponse] = []
+
+
+class MultiAgentEvaluationDetailResponse(EvaluationDetailResponse):
+    """Detail response extended with step-level results and pipeline score."""
+    pipeline_score: float | None = None
+    pipeline_verdict: str | None = None
+    step_evaluations: list[StepEvaluationResponse] = []
+
+
 # ── Trace Responses ────────────────────────────────────────────────────
 
 class TraceResponse(BaseModel):
@@ -97,7 +141,7 @@ class TraceResponse(BaseModel):
     metadata: dict | None = None
     status: str
     created_at: datetime
-    evaluation: EvaluationResponse | None = None
+    evaluation: MultiAgentEvaluationResponse | EvaluationResponse | None = None
 
 
 class TraceDetailResponse(BaseModel):
@@ -109,7 +153,7 @@ class TraceDetailResponse(BaseModel):
     metadata: dict | None = None
     status: str
     created_at: datetime
-    evaluation: EvaluationDetailResponse | None = None
+    evaluation: MultiAgentEvaluationDetailResponse | EvaluationDetailResponse | None = None
 
 
 class TraceListResponse(BaseModel):
