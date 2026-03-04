@@ -445,7 +445,7 @@ You are a completeness evaluation expert. Your task:
 2. For each key point, determine whether the answer adequately covers it.
 
 Rules:
-- Extract 2-6 key points depending on question complexity. Simple questions may have 2-3, complex ones up to 6.
+- Extract EXACTLY the number of key points specified in the user prompt. No more, no less.
 - Each key point should be a distinct, verifiable information requirement.
 - A key point is "covered" if the answer addresses it with relevant, substantive information.
 - A key point is "not_covered" if the answer ignores it or provides no relevant information.
@@ -482,6 +482,21 @@ COMPLETENESS_JSON_SCHEMA = {
 }
 
 
+def _key_point_count(question: str) -> int:
+    """Deterministic key point count based on question word count.
+
+    Fixes consistency issue: the LLM no longer decides how many key
+    points to extract, so the denominator stays stable across runs.
+    """
+    word_count = len(question.split())
+    if word_count <= 15:
+        return 3
+    elif word_count <= 40:
+        return 4
+    else:
+        return 5
+
+
 def build_completeness_user_prompt(question: str, answer: str, contexts: list[str]) -> str:
     question = truncate_text(question, settings.max_question_chars, label="question")
     answer = truncate_text(answer, settings.max_answer_chars, label="answer")
@@ -490,6 +505,7 @@ def build_completeness_user_prompt(question: str, answer: str, contexts: list[st
         max_single_chars=settings.max_single_context_chars,
     )
     context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
+    n = _key_point_count(question)
     return (
         "QUESTION:\n"
         f"{question}\n\n"
@@ -497,7 +513,7 @@ def build_completeness_user_prompt(question: str, answer: str, contexts: list[st
         f"{answer}\n\n"
         "CONTEXT PASSAGES:\n"
         f"{context_block}\n\n"
-        "Extract key points from the question and verify which ones the answer covers.\n"
+        f"Extract EXACTLY {n} key points from the question and verify which ones the answer covers.\n"
         "Output ONLY JSON."
     )
 
