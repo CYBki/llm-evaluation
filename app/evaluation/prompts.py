@@ -1,3 +1,6 @@
+from app.config import settings
+from app.evaluation.prompt_utils import truncate_contexts, truncate_text
+
 RUBRIC_BLOCK = """
 RUBRIC START
 
@@ -140,6 +143,12 @@ EXPECTED FORMAT:
 
 
 def build_stage_1_user_prompt(question: str, answer: str, contexts: list[str]) -> str:
+    question = truncate_text(question, settings.max_question_chars, label="question")
+    answer = truncate_text(answer, settings.max_answer_chars, label="answer")
+    contexts = truncate_contexts(
+        contexts, max_total_chars=settings.max_context_total_chars,
+        max_single_chars=settings.max_single_context_chars,
+    )
     context_block = "\n".join([f"- {item}" for item in contexts]) if contexts else "- (empty)"
     return (
         f"{RUBRIC_BLOCK}\n\n"
@@ -265,6 +274,11 @@ If no claims are found, return {"disagreement_claims": []}.
 
 
 def build_hallucination_stage_1_user_prompt(answer: str, contexts: list[str]) -> str:
+    answer = truncate_text(answer, settings.max_answer_chars, label="answer")
+    contexts = truncate_contexts(
+        contexts, max_total_chars=settings.max_context_total_chars,
+        max_single_chars=settings.max_single_context_chars,
+    )
     context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
     return (
         "ANSWER:\n"
@@ -337,6 +351,11 @@ CITATION_CHECK_JSON_SCHEMA = {
 
 
 def build_citation_check_user_prompt(answer: str, contexts: list[str]) -> str:
+    answer = truncate_text(answer, settings.max_answer_chars, label="answer")
+    contexts = truncate_contexts(
+        contexts, max_total_chars=settings.max_context_total_chars,
+        max_single_chars=settings.max_single_context_chars,
+    )
     context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
     return (
         "ANSWER:\n"
@@ -406,6 +425,8 @@ ANSWER_RELEVANCY_JSON_SCHEMA = {
 
 
 def build_answer_relevancy_user_prompt(question: str, answer: str) -> str:
+    question = truncate_text(question, settings.max_question_chars, label="question")
+    answer = truncate_text(answer, settings.max_answer_chars, label="answer")
     return (
         "QUESTION:\n"
         f"{question}\n\n"
@@ -462,6 +483,12 @@ COMPLETENESS_JSON_SCHEMA = {
 
 
 def build_completeness_user_prompt(question: str, answer: str, contexts: list[str]) -> str:
+    question = truncate_text(question, settings.max_question_chars, label="question")
+    answer = truncate_text(answer, settings.max_answer_chars, label="answer")
+    contexts = truncate_contexts(
+        contexts, max_total_chars=settings.max_context_total_chars,
+        max_single_chars=settings.max_single_context_chars,
+    )
     context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
     return (
         "QUESTION:\n"
@@ -529,6 +556,11 @@ CONTEXT_PRECISION_JSON_SCHEMA = {
 
 
 def build_context_precision_user_prompt(question: str, contexts: list[str]) -> str:
+    question = truncate_text(question, settings.max_question_chars, label="question")
+    contexts = truncate_contexts(
+        contexts, max_total_chars=settings.max_context_total_chars,
+        max_single_chars=settings.max_single_context_chars,
+    )
     context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
     return (
         "QUESTION:\n"
@@ -597,6 +629,13 @@ def build_context_recall_user_prompt(
     contexts: list[str],
     ground_truth: str | None = None,
 ) -> str:
+    question = truncate_text(question, settings.max_question_chars, label="question")
+    contexts = truncate_contexts(
+        contexts, max_total_chars=settings.max_context_total_chars,
+        max_single_chars=settings.max_single_context_chars,
+    )
+    if ground_truth:
+        ground_truth = truncate_text(ground_truth, settings.max_ground_truth_chars, label="ground_truth")
     context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
 
     if ground_truth:

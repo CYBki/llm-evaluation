@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     celery_broker_url: str = "redis://redis:6379/0"
     celery_result_backend: str = "redis://redis:6379/1"
 
+    # ── Prompt truncation limits (characters) ──
+    max_question_chars: int = 8_000
+    max_answer_chars: int = 40_000
+    max_context_total_chars: int = 80_000
+    max_single_context_chars: int = 20_000
+    max_ground_truth_chars: int = 10_000
+
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
 
 
