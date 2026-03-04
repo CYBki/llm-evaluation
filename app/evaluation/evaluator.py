@@ -35,13 +35,13 @@ _MAX_STAGE_2_RETRIES = 3
 # hallucination_score and completeness come from RAG analytical metrics.
 _OVERALL_WEIGHTS = {
     "hallucination_score": 0.15,
-    "faithfulness":       0.15,
+    "faithfulness":       0.10,
+    "answer_relevancy":   0.15,
     "completeness":       0.10,
-    "answer_relevancy":   0.10,
-    "context_precision":  0.15,
+    "context_precision":  0.10,
     "context_recall":     0.10,
+    "helpfulness":        0.15,
     "coherence":          0.05,
-    "helpfulness":        0.10,
     "clarity":            0.05,
     "citation_check":     0.05,
 }
