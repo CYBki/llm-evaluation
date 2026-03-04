@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     celery_broker_url: str = "redis://redis:6379/0"
     celery_result_backend: str = "redis://redis:6379/1"
 
+    # ── CORS ──
+    cors_origins: str = ""  # comma-separated origins, e.g. "https://app.example.com,https://admin.example.com"
+
     # ── Prompt truncation limits (characters) ──
     max_question_chars: int = 8_000
     max_answer_chars: int = 40_000

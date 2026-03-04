@@ -16,6 +16,7 @@ from slowapi.util import get_remote_address
 from sqlalchemy import text
 
 from app.database import SessionLocal
+from app.config import settings
 from app.evaluation.llm_client import OpenAILLMClient
 from app.exceptions import AppError
 from app.routers.auth import router as auth_router
@@ -125,13 +126,23 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# ── CORS configuration ───────────────────────────────────────────────────
+# CORS_ORIGINS env var: comma-separated allowed origins.
+#   - Empty / unset  → CORS middleware not added (most secure)
+#   - "*"            → allow all origins (development only!)
+#   - Specific list  → only those origins allowed
+_raw_origins = settings.cors_origins.strip()
+if _raw_origins:
+    _origin_list = ["*"] if _raw_origins == "*" else [
+        o.strip() for o in _raw_origins.split(",") if o.strip()
+    ]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_origin_list,
+        allow_credentials=_raw_origins != "*",  # credentials + * is invalid per spec
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # ── Standardized error handling ──────────────────────────────────────────
 
