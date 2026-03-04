@@ -41,7 +41,6 @@ def enqueue_trace_evaluation(trace_id: UUID | str) -> None:
 def _apply_result_to_evaluation(evaluation: EvaluationResult, result: dict) -> None:
     """Map eval result dict fields onto an EvaluationResult ORM object."""
     evaluation.clarity = result.get("clarity")
-    evaluation.specificity = result.get("specificity")
     evaluation.is_off_topic = result.get("is_off_topic")
     evaluation.completeness = result.get("completeness")
     evaluation.coherence = result.get("coherence")
@@ -71,7 +70,6 @@ def _apply_result_to_evaluation(evaluation: EvaluationResult, result: dict) -> N
 def _apply_result_to_step(step_eval: StepEvaluationResult, result: dict) -> None:
     """Map eval result dict fields onto a StepEvaluationResult ORM object."""
     step_eval.clarity = result.get("clarity")
-    step_eval.specificity = result.get("specificity")
     step_eval.is_off_topic = result.get("is_off_topic")
     step_eval.completeness = result.get("completeness")
     step_eval.coherence = result.get("coherence")

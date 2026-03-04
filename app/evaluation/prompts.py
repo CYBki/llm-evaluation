@@ -10,12 +10,6 @@ CLARITY (of the ANSWER):
 - 0.4 = Convoluted, hard to follow, contains contradictory statements, or uses excessive hedging.
 - 0.0 = Nonsensical, unparseable, or riddled with contradictions.
 
-SPECIFICITY (of the ANSWER):
-- 1.0 = Answer provides concrete details: names, numbers, dates, specific facts.
-- 0.7 = Reasonably specific with some concrete details.
-- 0.4 = Mostly vague or generic, lacks concrete details (e.g., "a long time ago", "many people").
-- 0.0 = Completely vague, no specific information whatsoever.
-
 IS_OFF_TOPIC:
 - true  = The ANSWER does not address the question at all; it discusses an entirely unrelated topic.
 - false = The ANSWER makes a genuine attempt to address the question, even if partially or incorrectly.
@@ -57,7 +51,6 @@ STAGE_2_JSON_SCHEMA = {
         "type": "object",
         "properties": {
             "clarity":                {"type": "number"},
-            "specificity":            {"type": "number"},
             "is_off_topic":           {"type": "boolean"},
             "completeness":           {"type": "number"},
             "coherence":              {"type": "number"},
@@ -83,7 +76,7 @@ STAGE_2_JSON_SCHEMA = {
             }
         },
         "required": [
-            "clarity", "specificity", "is_off_topic", "completeness",
+            "clarity", "is_off_topic", "completeness",
             "coherence", "helpfulness", "is_deflection", "overall_score",
             "evaluation_confidence", "reasoning_summary", "disagreement_claims"
         ],
@@ -93,7 +86,6 @@ STAGE_2_JSON_SCHEMA = {
 
 _EXAMPLE_JSON = """{
   "clarity": 0.7,
-  "specificity": 0.7,
   "is_off_topic": false,
   "completeness": 0.4,
   "coherence": 0.7,

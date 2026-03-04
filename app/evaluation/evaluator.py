@@ -22,7 +22,7 @@ from app.evaluation.rag_metrics import compute_rag_metrics
 logger = logging.getLogger(__name__)
 
 _FLOAT_FIELDS = [
-    "clarity", "specificity", "completeness", "coherence",
+    "clarity", "completeness", "coherence",
     "helpfulness", "overall_score", "evaluation_confidence",
 ]
 _BOOL_FIELDS = ["is_off_topic", "is_deflection"]
@@ -170,7 +170,6 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
     if not client.is_enabled:
         return {
             "clarity": None,
-            "specificity": None,
             "is_off_topic": None,
             "completeness": None,
             "coherence": None,
@@ -264,7 +263,6 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
 
         return {
             "clarity": parsed.get("clarity"),
-            "specificity": parsed.get("specificity"),
             "is_off_topic": is_off_topic_value,
             "completeness": rag_results.get("completeness") or parsed.get("completeness"),
             "coherence": parsed.get("coherence"),
@@ -297,7 +295,6 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
     except LLMClientError as exc:
         return {
             "clarity": None,
-            "specificity": None,
             "is_off_topic": None,
             "completeness": None,
             "coherence": None,
@@ -412,7 +409,6 @@ def _regex_extract_scores(stage_1_text: str) -> dict[str, Any]:
     # Patterns like "CLARITY: 0.7", "Clarity: 0.7/1.0", "clarity = 0.7" etc.
     float_patterns = {
         "clarity": r"(?:CLARITY|clarity)[:\s=]+([01](?:\.\d+)?)",
-        "specificity": r"(?:SPECIFICITY|specificity)[:\s=]+([01](?:\.\d+)?)",
         "completeness": r"(?:COMPLETENESS|completeness)[:\s=]+([01](?:\.\d+)?)",
         "coherence": r"(?:COHERENCE|coherence)[:\s=]+([01](?:\.\d+)?)",
         "helpfulness": r"(?:HELPFULNESS|helpfulness)[:\s=]+([01](?:\.\d+)?)",

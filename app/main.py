@@ -80,7 +80,7 @@ otomatik olarak ölçen değerlendirme platformu.
 ### Özellikler
 - **Two-stage LLM-as-Judge:** gpt-5.2 (CoT reasoning) + gpt-5-mini (JSON scoring)
 - **13 metrik:** clarity, coherence, helpfulness, completeness, answer_relevancy,
-  hallucination_score, context_precision, context_recall, citation_check, specificity,
+  hallucination_score, faithfulness, context_precision, context_recall, citation_check,
   is_off_topic, is_deflection, overall_score
 - **Async evaluation:** Redis + Celery ile arka plan değerlendirme
 - **Score caps:** off-topic ≤ 0.20, deflection ≤ 0.20, contradiction ≤ 0.35

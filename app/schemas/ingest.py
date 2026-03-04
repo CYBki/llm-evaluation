@@ -96,7 +96,6 @@ class EvaluationResponse(BaseModel):
 
 class EvaluationDetailResponse(EvaluationResponse):
     """Extended evaluation output including internal debug fields."""
-    specificity: float | None = None
     stage_1_reasoning: str | None = None
     disagreement_claims: list[dict] | None = None
     model_used: str | None = None
