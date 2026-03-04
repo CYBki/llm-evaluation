@@ -3,6 +3,7 @@ import sys
 import time
 import traceback
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +16,7 @@ from slowapi.util import get_remote_address
 from sqlalchemy import text
 
 from app.database import SessionLocal
+from app.evaluation.llm_client import OpenAILLMClient
 from app.exceptions import AppError
 from app.routers.auth import router as auth_router
 from app.routers.ingest import router as ingest_router
@@ -58,6 +60,19 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
+
+# ── Application lifespan (startup / shutdown) ────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage shared resources across the application lifecycle."""
+    logger.info("Application starting up")
+    yield
+    # Shutdown: close shared HTTP connection pool
+    await OpenAILLMClient.close_shared_client()
+    logger.info("Application shut down cleanly")
+
+
 _API_DESCRIPTION = """\
 **RAG Eval API** — RAG (Retrieval-Augmented Generation) sistemlerinin cevap kalitesini
 otomatik olarak ölçen değerlendirme platformu.
@@ -79,6 +94,7 @@ app = FastAPI(
     title="RAG Eval API",
     description=_API_DESCRIPTION,
     version="0.1.0",
+    lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_tags=[
