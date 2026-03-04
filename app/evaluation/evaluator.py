@@ -75,7 +75,7 @@ def _compute_overall_score(
     sources = {
         "hallucination_score": rag_results.get("hallucination_score"),
         "faithfulness": rag_results.get("faithfulness"),
-        "completeness": rag_results.get("completeness") or parsed.get("completeness"),
+        "completeness": rag_results.get("completeness"),
         "answer_relevancy": rag_results.get("answer_relevancy"),
         "context_precision": rag_results.get("context_precision"),
         "context_recall": rag_results.get("context_recall"),
@@ -264,7 +264,7 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
         return {
             "clarity": parsed.get("clarity"),
             "is_off_topic": is_off_topic_value,
-            "completeness": rag_results.get("completeness") or parsed.get("completeness"),
+            "completeness": rag_results.get("completeness"),
             "coherence": parsed.get("coherence"),
             "helpfulness": parsed.get("helpfulness"),
             "is_deflection": parsed.get("is_deflection"),
