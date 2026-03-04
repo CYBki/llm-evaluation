@@ -104,25 +104,27 @@ def _extract_steps(trace: Trace) -> list[dict] | None:
 
 
 def evaluate_trace_and_persist(trace_id: str) -> None:
+    """Sync entry point — delegates to async implementation via asyncio.run()."""
+    asyncio.run(_evaluate_trace_async(trace_id))
+
+
+async def _evaluate_trace_async(trace_id: str) -> None:
     with _get_db() as db:
         trace = db.query(Trace).filter(Trace.id == trace_id).first()
         if not trace:
             logger.warning("Trace %s not found for evaluation", trace_id)
             return
 
-        loop = asyncio.new_event_loop()
-
         # ── 1. Trace-level evaluation (final answer) ──
         try:
-            result = loop.run_until_complete(
-                evaluate_trace(trace.question, trace.answer, trace.contexts, trace.ground_truth)
+            result = await evaluate_trace(
+                trace.question, trace.answer, trace.contexts, trace.ground_truth
             )
         except Exception:
             logger.exception("Evaluation failed for trace %s", trace_id)
             trace.status = "failed"
             db.add(trace)
             db.commit()
-            loop.close()
             return
 
         evaluation = db.query(EvaluationResult).filter(EvaluationResult.trace_id == trace.id).first()
@@ -131,34 +133,37 @@ def evaluate_trace_and_persist(trace_id: str) -> None:
 
         _apply_result_to_evaluation(evaluation, result)
 
-        # ── 2. Step-level evaluation (if multi-agent) ──
+        # ── 2. Step-level evaluation (if multi-agent) — PARALLEL ──
         steps = _extract_steps(trace)
         if steps:
-            logger.info("Multi-agent trace %s detected with %d steps — running step-level eval", trace_id, len(steps))
+            logger.info("Multi-agent trace %s detected with %d steps — running parallel step-level eval", trace_id, len(steps))
 
             # Clear previous step evaluations (re-evaluation case)
             db.query(StepEvaluationResult).filter(StepEvaluationResult.trace_id == trace.id).delete()
 
+            # Build coroutines for all steps and run them concurrently
+            step_coros = [
+                evaluate_trace(
+                    question=step.get("input", ""),
+                    answer=step.get("output", ""),
+                    contexts=step.get("contexts"),
+                    ground_truth=None,
+                )
+                for step in steps
+            ]
+            step_results = await asyncio.gather(*step_coros, return_exceptions=True)
+
             step_scores: list[float] = []
 
-            for step in steps:
+            for step, step_result in zip(steps, step_results):
                 step_index = step.get("step_index", 0)
                 agent_name = step.get("agent", f"step_{step_index}")
-                step_input = step.get("input", "")
-                step_output = step.get("output", "")
-                step_contexts = step.get("contexts")
 
-                try:
-                    step_result = loop.run_until_complete(
-                        evaluate_trace(
-                            question=step_input,
-                            answer=step_output,
-                            contexts=step_contexts,
-                            ground_truth=None,
-                        )
+                if isinstance(step_result, Exception):
+                    logger.exception(
+                        "Step %d eval failed for trace %s: %s",
+                        step_index, trace_id, step_result,
                     )
-                except Exception:
-                    logger.exception("Step %d eval failed for trace %s", step_index, trace_id)
                     continue
 
                 step_eval = StepEvaluationResult(
@@ -192,8 +197,6 @@ def evaluate_trace_and_persist(trace_id: str) -> None:
                     trace_score,
                     avg_step,
                 )
-
-        loop.close()
 
         trace.status = "completed" if _is_successful_result(result) else "failed"
 
