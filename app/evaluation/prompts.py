@@ -141,7 +141,7 @@ def build_stage_1_user_prompt(question: str, answer: str, contexts: list[str]) -
         contexts, max_total_chars=settings.max_context_total_chars,
         max_single_chars=settings.max_single_context_chars,
     )
-    context_block = "\n".join([f"- {item}" for item in contexts]) if contexts else "- (empty)"
+    context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
     return (
         f"{RUBRIC_BLOCK}\n\n"
         "Question:\n"
