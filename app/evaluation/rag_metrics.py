@@ -45,8 +45,12 @@ from app.evaluation.prompts import (
 
 logger = logging.getLogger(__name__)
 
-_HALLUCINATION_UNSUPPORTED_PENALTY = 0.6
-_HALLUCINATION_CONTRADICTION_PENALTY = 1.0
+# ── Capped penalty per problematic claim (agreement-independent) ────────
+# Each problematic claim subtracts a fixed penalty from 1.0.
+# Agreement claims do NOT enter the formula at all.
+_HALLUCINATION_UNSUPPORTED_PENALTY = 0.15     # 1 unsupported  → 0.85
+_HALLUCINATION_CONTRADICTION_PENALTY = 0.30   # 1 contradiction → 0.70
+_FAITHFULNESS_PER_CLAIM_PENALTY = 0.20        # 1 unfaithful   → 0.80
 
 
 # ── Cosine Similarity (pure Python, no numpy needed) ────────────────────
@@ -172,27 +176,26 @@ async def compute_hallucination_rubric(
             )
             return {"hallucination_score": None, "faithfulness": None, "hallucination_claims": []}
 
-        weighted_penalty = 0.0
+        # Capped penalty: each problematic claim subtracts a fixed amount.
+        # Agreement claims are ignored — score is independent of how many
+        # agreement claims the LLM happens to extract.
+        total_penalty = 0.0
         unfaithful_count = 0
         for item in claims:
             if not isinstance(item, dict):
                 continue
             disagreement_type = str(item.get("disagreement_type", "")).lower()
             if disagreement_type == "unsupported claim":
-                weighted_penalty += _HALLUCINATION_UNSUPPORTED_PENALTY
+                total_penalty += _HALLUCINATION_UNSUPPORTED_PENALTY
                 unfaithful_count += 1
             elif disagreement_type == "confirmed contradiction":
-                weighted_penalty += _HALLUCINATION_CONTRADICTION_PENALTY
+                total_penalty += _HALLUCINATION_CONTRADICTION_PENALTY
                 unfaithful_count += 1
 
-        total = len(claims)
-        h_score = round(1.0 - (weighted_penalty / total), 4) if total > 0 else None
+        h_score = round(max(0.0, 1.0 - total_penalty), 4)
 
-        # Faithfulness: binary per-claim (supported / total)
-        # Unlike hallucination_score which uses weighted penalties,
-        # faithfulness treats all unfaithful claims equally.
-        faithful_count = total - unfaithful_count
-        faithfulness = round(faithful_count / total, 4) if total > 0 else None
+        # Faithfulness: fixed penalty per unfaithful claim (agreement-independent)
+        faithfulness = round(max(0.0, 1.0 - unfaithful_count * _FAITHFULNESS_PER_CLAIM_PENALTY), 4)
 
         return {
             "hallucination_score": max(0.0, min(1.0, h_score)) if h_score is not None else None,
