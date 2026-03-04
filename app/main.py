@@ -218,9 +218,8 @@ def health() -> dict:
     """API ve PostgreSQL bağlantı durumunu döner."""
     status_detail = {"api": "ok"}
     try:
-        db = SessionLocal()
-        db.execute(text("SELECT 1"))
-        db.close()
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
         status_detail["database"] = "ok"
     except Exception:
         status_detail["database"] = "unavailable"
