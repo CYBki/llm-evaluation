@@ -36,6 +36,7 @@ def _build_scores(evaluation) -> ScoresResponse:
         answer_relevancy=evaluation.answer_relevancy,
         context_precision=evaluation.context_precision,
         context_recall=evaluation.context_recall,
+        faithfulness=evaluation.faithfulness,
         hallucination_score=evaluation.hallucination_score,
         citation_check=evaluation.citation_check,
     )
@@ -65,6 +66,7 @@ def _build_verdicts(evaluation) -> VerdictsResponse:
         answer_relevancy=get_verdict("answer_relevancy", evaluation.answer_relevancy),
         context_precision=get_verdict("context_precision", evaluation.context_precision),
         context_recall=get_verdict("context_recall", evaluation.context_recall),
+        faithfulness=get_verdict("faithfulness", evaluation.faithfulness),
         hallucination_score=get_verdict("hallucination_score", evaluation.hallucination_score),
         citation_check=get_verdict("citation_check", evaluation.citation_check),
     )

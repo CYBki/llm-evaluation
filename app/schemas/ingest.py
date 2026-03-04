@@ -37,6 +37,7 @@ class ScoresResponse(BaseModel):
     answer_relevancy: float | None = None
     context_precision: float | None = None
     context_recall: float | None = None
+    faithfulness: float | None = None
     hallucination_score: float | None = None
     citation_check: float | None = None
 
@@ -77,6 +78,7 @@ class VerdictsResponse(BaseModel):
     answer_relevancy: str | None = None
     context_precision: str | None = None
     context_recall: str | None = None
+    faithfulness: str | None = None
     hallucination_score: str | None = None
     citation_check: str | None = None
 

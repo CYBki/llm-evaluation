@@ -58,8 +58,10 @@ def _apply_result_to_evaluation(evaluation: EvaluationResult, result: dict) -> N
     evaluation.rubric_version = result.get("rubric_version")
     # RAG-specific
     evaluation.answer_relevancy = result.get("answer_relevancy")
+    evaluation.faithfulness = result.get("faithfulness")
     evaluation.hallucination_score = result.get("hallucination_score")
     evaluation.citation_check = result.get("citation_check")
+    evaluation.faithfulness_claims = result.get("hallucination_claims")  # faithfulness derived from same claims
     evaluation.hallucination_claims = result.get("hallucination_claims")
     evaluation.completeness_key_points = result.get("completeness_key_points")
     evaluation.context_precision = result.get("context_precision")
@@ -79,8 +81,10 @@ def _apply_result_to_step(step_eval: StepEvaluationResult, result: dict) -> None
     step_eval.evaluation_confidence = result.get("evaluation_confidence")
     step_eval.reasoning_summary = result.get("reasoning_summary")
     step_eval.answer_relevancy = result.get("answer_relevancy")
+    step_eval.faithfulness = result.get("faithfulness")
     step_eval.hallucination_score = result.get("hallucination_score")
     step_eval.citation_check = result.get("citation_check")
+    step_eval.faithfulness_claims = result.get("hallucination_claims")
     step_eval.hallucination_claims = result.get("hallucination_claims")
     step_eval.completeness_key_points = result.get("completeness_key_points")
     step_eval.context_precision = result.get("context_precision")

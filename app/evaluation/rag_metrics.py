@@ -141,7 +141,7 @@ async def compute_hallucination_rubric(
         }
     """
     if not client.is_enabled or not contexts:
-        return {"hallucination_score": None, "hallucination_claims": []}
+        return {"hallucination_score": None, "faithfulness": None, "hallucination_claims": []}
 
     try:
         stage_1 = await client.chat_completion(
@@ -170,29 +170,39 @@ async def compute_hallucination_rubric(
                 "Raw response (first 500 chars): %s",
                 (stage_2.content or "")[:500],
             )
-            return {"hallucination_score": None, "hallucination_claims": []}
+            return {"hallucination_score": None, "faithfulness": None, "hallucination_claims": []}
 
         weighted_penalty = 0.0
+        unfaithful_count = 0
         for item in claims:
             if not isinstance(item, dict):
                 continue
             disagreement_type = str(item.get("disagreement_type", "")).lower()
             if disagreement_type == "unsupported claim":
                 weighted_penalty += _HALLUCINATION_UNSUPPORTED_PENALTY
+                unfaithful_count += 1
             elif disagreement_type == "confirmed contradiction":
                 weighted_penalty += _HALLUCINATION_CONTRADICTION_PENALTY
+                unfaithful_count += 1
 
         total = len(claims)
-        score = round(1.0 - (weighted_penalty / total), 4) if total > 0 else None
+        h_score = round(1.0 - (weighted_penalty / total), 4) if total > 0 else None
+
+        # Faithfulness: binary per-claim (supported / total)
+        # Unlike hallucination_score which uses weighted penalties,
+        # faithfulness treats all unfaithful claims equally.
+        faithful_count = total - unfaithful_count
+        faithfulness = round(faithful_count / total, 4) if total > 0 else None
 
         return {
-            "hallucination_score": max(0.0, min(1.0, score)) if score is not None else None,
+            "hallucination_score": max(0.0, min(1.0, h_score)) if h_score is not None else None,
+            "faithfulness": max(0.0, min(1.0, faithfulness)) if faithfulness is not None else None,
             "hallucination_claims": claims,
         }
 
     except LLMClientError:
         logger.exception("hallucination rubric computation failed")
-        return {"hallucination_score": None, "hallucination_claims": []}
+        return {"hallucination_score": None, "faithfulness": None, "hallucination_claims": []}
 
 
 # ── 4. Citation Check ──────────────────────────────────────────────────
@@ -467,6 +477,7 @@ async def compute_rag_metrics(
     return {
         "answer_relevancy": relevancy,
         "hallucination_score": hallucination_result.get("hallucination_score"),
+        "faithfulness": hallucination_result.get("faithfulness"),
         "hallucination_claims": hallucination_result.get("hallucination_claims", []),
         "hallucination_prompt_version": settings.hallucination_prompt_version,
         "citation_check": citation,

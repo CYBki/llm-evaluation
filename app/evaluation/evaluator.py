@@ -34,14 +34,16 @@ _MAX_STAGE_2_RETRIES = 3
 # Weighted formula replaces LLM-generated overall_score for consistency.
 # hallucination_score and completeness come from RAG analytical metrics.
 _OVERALL_WEIGHTS = {
-    "hallucination_score": 0.25,
-    "completeness":       0.15,
+    "hallucination_score": 0.15,
+    "faithfulness":       0.15,
+    "completeness":       0.10,
     "answer_relevancy":   0.10,
     "context_precision":  0.15,
     "context_recall":     0.10,
-    "coherence":          0.10,
+    "coherence":          0.05,
     "helpfulness":        0.10,
     "clarity":            0.05,
+    "citation_check":     0.05,
 }
 
 # When is_deflection is True, cap overall_score to this value.
@@ -72,6 +74,7 @@ def _compute_overall_score(
     """
     sources = {
         "hallucination_score": rag_results.get("hallucination_score"),
+        "faithfulness": rag_results.get("faithfulness"),
         "completeness": rag_results.get("completeness") or parsed.get("completeness"),
         "answer_relevancy": rag_results.get("answer_relevancy"),
         "context_precision": rag_results.get("context_precision"),
@@ -79,6 +82,7 @@ def _compute_overall_score(
         "coherence": parsed.get("coherence"),
         "helpfulness": parsed.get("helpfulness"),
         "clarity": parsed.get("clarity"),
+        "citation_check": rag_results.get("citation_check"),
     }
 
     total_weight = 0.0
@@ -182,6 +186,7 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
             "prompt_version": settings.prompt_version,
             "rubric_version": settings.rubric_version,
             "answer_relevancy": None,
+            "faithfulness": None,
             "hallucination_score": None,
             "citation_check": None,
             "hallucination_claims": [],
@@ -281,6 +286,7 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
             "prompt_version": settings.prompt_version,
             "rubric_version": settings.rubric_version,
             "answer_relevancy": rag_results.get("answer_relevancy"),
+            "faithfulness": rag_results.get("faithfulness"),
             "hallucination_score": rag_results.get("hallucination_score"),
             "citation_check": rag_results.get("citation_check"),
             "hallucination_claims": rag_results.get("hallucination_claims", []),
@@ -307,6 +313,7 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
             "prompt_version": settings.prompt_version,
             "rubric_version": settings.rubric_version,
             "answer_relevancy": None,
+            "faithfulness": None,
             "hallucination_score": None,
             "citation_check": None,
             "hallucination_claims": [],

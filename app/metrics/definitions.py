@@ -22,6 +22,19 @@ METRIC_DEFINITIONS: list[dict] = [
         ],
     },
     {
+        "key": "faithfulness",
+        "label": "Sadakat (Faithfulness)",
+        "description": "Cevaptaki iddiaların context'e sadık olma oranı. Her iddia ikili (faithful/unfaithful) olarak değerlendirilir. 1.0 = tüm iddialar context'te var, 0.0 = hiçbir iddia desteklenmiyor.",
+        "range": [0.0, 1.0],
+        "good_direction": "high",
+        "thresholds": [
+            {"level": "good",     "min": 0.8, "max": 1.0,  "explanation": "Cevaptaki iddiaların büyük çoğunluğu context'le destekleniyor."},
+            {"level": "warning",  "min": 0.5, "max": 0.8,  "explanation": "Bazı iddialar context'te desteklenmiyor, kontrol edilmeli."},
+            {"level": "bad",      "min": 0.2, "max": 0.5,  "explanation": "İddiaların yarısından fazlası desteksiz. Cevap güvenilir değil."},
+            {"level": "critical", "min": 0.0, "max": 0.2,  "explanation": "Cevap neredeyse tamamen context dışı. Büyük sadakat sorunu."},
+        ],
+    },
+    {
         "key": "answer_relevancy",
         "label": "Cevap İlgililiği",
         "description": "Cevabın soruyla ne kadar ilgili olduğunu ölçer.",
