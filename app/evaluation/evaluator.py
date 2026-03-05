@@ -245,7 +245,7 @@ async def evaluate_trace(
                 model=settings.stage_1_model,
                 system_prompt=STAGE_1_SYSTEM_PROMPT,
                 user_prompt=build_stage_1_user_prompt(question, answer, context_items),
-                max_completion_tokens=16384,
+                max_completion_tokens=4096,
             )
         )
         rag_metrics_task = asyncio.create_task(
@@ -274,7 +274,7 @@ async def evaluate_trace(
                     model=settings.stage_2_model,
                     system_prompt=STAGE_2_SYSTEM_PROMPT,
                     user_prompt=build_stage_2_user_prompt(stage_1.content),
-                    max_completion_tokens=2048,
+                    max_completion_tokens=4096,
                     json_schema=STAGE_2_JSON_SCHEMA,
                 )
             else:
@@ -291,7 +291,7 @@ async def evaluate_trace(
                     user_prompt=build_stage_2_repair_user_prompt(
                         last_output, stage_1.content, validation_errors
                     ),
-                    max_completion_tokens=2048,
+                    max_completion_tokens=4096,
                     json_schema=STAGE_2_JSON_SCHEMA,
                 )
 

@@ -31,16 +31,11 @@ from app.evaluation.prompts import (
     CONTEXT_PRECISION_SYSTEM_PROMPT,
     CONTEXT_RECALL_JSON_SCHEMA,
     CONTEXT_RECALL_SYSTEM_PROMPT,
-    HALLUCINATION_STAGE_1_SYSTEM_PROMPT,
-    HALLUCINATION_STAGE_2_JSON_SCHEMA,
-    HALLUCINATION_STAGE_2_SYSTEM_PROMPT,
     build_answer_relevancy_user_prompt,
     build_citation_check_user_prompt,
     build_completeness_user_prompt,
     build_context_precision_user_prompt,
     build_context_recall_user_prompt,
-    build_hallucination_stage_1_user_prompt,
-    build_hallucination_stage_2_user_prompt,
 )
 
 logger = logging.getLogger(__name__)
@@ -135,14 +130,15 @@ async def compute_hallucination_rubric(
     contexts: list[str],
 ) -> dict[str, Any]:
     """
-    Dedicated hallucination detection using a two-stage judge pipeline.
+    Hallucination detection using a single structured-output call.
 
-    Stage 1: reasoning + claim disagreement analysis
-    Stage 2: strict JSON conversion to disagreement_claims[]
+    Extracts atomic claims from the answer, compares each against context
+    passages, and returns disagreement_claims[] with types directly as JSON.
 
     Returns:
         {
             "hallucination_score": float | None,
+            "faithfulness": float | None,
             "hallucination_claims": list[dict],
         }
     """
@@ -153,23 +149,23 @@ async def compute_hallucination_rubric(
             "hallucination_claims": [],
         }
 
+    # Lazy import to avoid circular dependency at module load time
+    from app.evaluation.prompts import (
+        HALLUCINATION_JSON_SCHEMA,
+        HALLUCINATION_SYSTEM_PROMPT,
+        build_hallucination_user_prompt,
+    )
+
     try:
-        stage_1 = await client.chat_completion(
+        resp = await client.chat_completion(
             model=settings.rag_metrics_model,
-            system_prompt=HALLUCINATION_STAGE_1_SYSTEM_PROMPT,
-            user_prompt=build_hallucination_stage_1_user_prompt(answer, contexts),
+            system_prompt=HALLUCINATION_SYSTEM_PROMPT,
+            user_prompt=build_hallucination_user_prompt(answer, contexts),
             max_completion_tokens=4096,
+            json_schema=HALLUCINATION_JSON_SCHEMA,
         )
 
-        stage_2 = await client.chat_completion(
-            model=settings.rag_metrics_model,
-            system_prompt=HALLUCINATION_STAGE_2_SYSTEM_PROMPT,
-            user_prompt=build_hallucination_stage_2_user_prompt(stage_1.content),
-            max_completion_tokens=2048,
-            json_schema=HALLUCINATION_STAGE_2_JSON_SCHEMA,
-        )
-
-        parsed = _safe_parse(stage_2.content)
+        parsed = _safe_parse(resp.content)
         claims = parsed.get("disagreement_claims", [])
         if not isinstance(claims, list):
             claims = []
@@ -178,7 +174,7 @@ async def compute_hallucination_rubric(
             logger.warning(
                 "hallucination_rubric: no disagreement_claims extracted. "
                 "Raw response (first 500 chars): %s",
-                (stage_2.content or "")[:500],
+                (resp.content or "")[:500],
             )
             return {
                 "hallucination_score": None,

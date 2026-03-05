@@ -37,7 +37,8 @@ RUBRIC END
 STAGE_1_SYSTEM_PROMPT = """
 You are an expert RAG answer quality evaluator.
 Strictly follow the rubric below when scoring.
-For each metric, write brief but clear reasoning.
+For each metric, write brief but clear reasoning (2-3 sentences max per metric).
+Keep total output under 1500 words.
 Use the anchor values (1.0 / 0.7 / 0.4 / 0.0) as reference points when scoring.
 Do NOT perform claim-level fact-checking — that is handled by a separate analytical pipeline.
 Focus only on the rubric dimensions listed.
@@ -199,6 +200,8 @@ def build_stage_2_repair_user_prompt(
     error_block = ""
     if validation_errors:
         error_block = f"\nVALIDATION ERRORS:\n{validation_errors}\n"
+    # Truncate long reasoning to prevent input bloat on retries
+    truncated_reasoning = stage_1_reasoning[:4000] if len(stage_1_reasoning) > 4000 else stage_1_reasoning
     return (
         "Below is the first conversion attempt and the original reasoning.\n"
         "The conversion attempt is invalid. Fix it and return a single valid JSON object.\n"
@@ -207,13 +210,13 @@ def build_stage_2_repair_user_prompt(
         "FIRST ATTEMPT OUTPUT:\n"
         f"{stage_2_output}\n\n"
         "ORIGINAL REASONING:\n"
-        f"{stage_1_reasoning}"
+        f"{truncated_reasoning}"
     )
 
 
-# ── RAG Metrics: Hallucination (Dedicated Rubric Judge) ───────────────
+# ── RAG Metrics: Hallucination (Single-Call Structured Output) ────────
 
-HALLUCINATION_STAGE_1_SYSTEM_PROMPT = """
+HALLUCINATION_SYSTEM_PROMPT = """
 You are a hallucination detection evaluator.
 
 Task:
@@ -236,11 +239,11 @@ Rules:
 - Use short direct quotes from both answer and context when possible.
 - If no matching context evidence exists, set context_quote to "" and context_quote_type to "factual claim".
 - context_quote_type must be either "instruction" or "factual claim".
-- Keep reasoning concise (1-2 sentences per item).
-- Output plain text reasoning only; do not output JSON.
+- Keep reasoning concise (1-2 sentences per claim).
+- Output ONLY JSON matching the required schema.
 """.strip()
 
-HALLUCINATION_STAGE_2_JSON_SCHEMA = {
+HALLUCINATION_JSON_SCHEMA = {
     "name": "hallucination_rubric_result",
     "strict": True,
     "schema": {
@@ -283,21 +286,13 @@ HALLUCINATION_STAGE_2_JSON_SCHEMA = {
     },
 }
 
-HALLUCINATION_STAGE_2_SYSTEM_PROMPT = """
-You convert evaluator reasoning into strict JSON.
-Return ONLY a single JSON object with one key: disagreement_claims.
-Use this structure for each item:
-- context_quote: string
-- context_quote_type: "instruction" | "factual claim"
-- answer_quote: string
-- reasoning: string
-- disagreement_type: "agreement" | "unsupported claim" | "confirmed contradiction"
-
-If no claims are found, return {"disagreement_claims": []}.
-""".strip()
+# Backward-compatible aliases
+HALLUCINATION_STAGE_1_SYSTEM_PROMPT = HALLUCINATION_SYSTEM_PROMPT
+HALLUCINATION_STAGE_2_JSON_SCHEMA = HALLUCINATION_JSON_SCHEMA
+HALLUCINATION_STAGE_2_SYSTEM_PROMPT = HALLUCINATION_SYSTEM_PROMPT
 
 
-def build_hallucination_stage_1_user_prompt(answer: str, contexts: list[str]) -> str:
+def build_hallucination_user_prompt(answer: str, contexts: list[str]) -> str:
     answer = truncate_text(answer, settings.max_answer_chars, label="answer")
     contexts = truncate_contexts(
         contexts,
@@ -317,14 +312,19 @@ def build_hallucination_stage_1_user_prompt(answer: str, contexts: list[str]) ->
         "Extract and evaluate factual claims with disagreement_type labels."
     )
 
+# Keep old function names as aliases
+build_hallucination_stage_1_user_prompt = build_hallucination_user_prompt
+
 
 def build_hallucination_stage_2_user_prompt(stage_1_reasoning: str) -> str:
+    """Deprecated: kept for backward compatibility only."""
     return (
         "Convert the following hallucination-evaluation reasoning into strict JSON.\n"
         "Output ONLY JSON.\n\n"
         "REASONING:\n"
         f"{stage_1_reasoning}"
     )
+
 
 
 # ── RAG Metrics: Citation Check ─────────────────────────────────────────
