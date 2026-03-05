@@ -471,22 +471,33 @@ async def compute_rag_metrics(
 
     # Run all independent metrics concurrently
     import asyncio
+    import time as _time
+
+    _t0 = _time.perf_counter()
+
+    async def _timed(name, coro):
+        t = _time.perf_counter()
+        result = await coro
+        logger.info("RAG metric '%s' completed in %.1fs", name, _time.perf_counter() - t)
+        return result
 
     relevancy_task = asyncio.create_task(
-        compute_answer_relevancy(client, question, answer, ctx)
+        _timed("relevancy", compute_answer_relevancy(client, question, answer, ctx))
     )
-    citation_task = asyncio.create_task(compute_citation_check(client, answer, ctx))
+    citation_task = asyncio.create_task(
+        _timed("citation", compute_citation_check(client, answer, ctx))
+    )
     hallucination_task = asyncio.create_task(
-        compute_hallucination_rubric(client, answer, ctx)
+        _timed("hallucination", compute_hallucination_rubric(client, answer, ctx))
     )
     completeness_task = asyncio.create_task(
-        compute_completeness(client, question, answer, ctx)
+        _timed("completeness", compute_completeness(client, question, answer, ctx))
     )
     ctx_precision_task = asyncio.create_task(
-        compute_context_precision(client, question, ctx)
+        _timed("ctx_precision", compute_context_precision(client, question, ctx))
     )
     ctx_recall_task = asyncio.create_task(
-        compute_context_recall(client, question, ctx, ground_truth)
+        _timed("ctx_recall", compute_context_recall(client, question, ctx, ground_truth))
     )
 
     relevancy = await relevancy_task
@@ -495,6 +506,9 @@ async def compute_rag_metrics(
     comp_result = await completeness_task
     ctx_precision = await ctx_precision_task
     ctx_recall = await ctx_recall_task
+
+    _t_end = _time.perf_counter()
+    logger.info("RAG metrics total: %.1fs", _t_end - _t0)
 
     # Token usage from RAG metrics (accumulated on the client instance)
     _rag_prompt = getattr(client, "_accumulated_prompt_tokens", 0)

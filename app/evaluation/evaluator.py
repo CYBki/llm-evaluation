@@ -238,6 +238,9 @@ async def evaluate_trace(
 
     try:
         import asyncio
+        import time as _time
+
+        _t0 = _time.perf_counter()
 
         # Run Stage 1 (rubric CoT) and RAG metrics concurrently
         stage_1_task = asyncio.create_task(
@@ -253,7 +256,14 @@ async def evaluate_trace(
         )
 
         stage_1 = await stage_1_task
+        _t1 = _time.perf_counter()
         rag_results = await rag_metrics_task
+        _t2 = _time.perf_counter()
+
+        logger.info(
+            "Timing — Stage 1: %.1fs | RAG metrics: %.1fs (parallel block: %.1fs)",
+            _t1 - _t0, _t2 - _t0, _t2 - _t0,
+        )
 
         # ── Token accumulator (per-stage for accurate cost) ──
         stage1_prompt_tokens = stage_1.prompt_tokens
@@ -313,6 +323,12 @@ async def evaluate_trace(
             fallback = _regex_extract_scores(stage_1.content)
             if fallback.get("overall_score") is not None:
                 parsed = fallback
+
+        _t3 = _time.perf_counter()
+        logger.info(
+            "Timing — Stage 2: %.1fs | Total: %.1fs",
+            _t3 - _t2, _t3 - _t0,
+        )
 
         is_off_topic_value = _coerce_off_topic_flag(
             parsed.get("is_off_topic"),
