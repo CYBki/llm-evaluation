@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
 
 import httpx
@@ -9,6 +12,105 @@ import httpx
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+# ── Retry configuration ────────────────────────────────────────────────
+_MAX_RETRIES = 3          # total attempts (1 original + 2 retries)
+_BACKOFF_BASE = 1.0       # initial wait in seconds
+_BACKOFF_FACTOR = 2.0     # multiplier per retry
+_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 529}
+
+# ── Circuit breaker configuration ──────────────────────────────────────
+_CB_FAILURE_THRESHOLD = 5    # consecutive failures to trip the breaker
+_CB_RECOVERY_TIMEOUT = 30.0  # seconds in OPEN state before trying HALF_OPEN
+
+
+class _CBState(Enum):
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
+
+
+class _CircuitBreaker:
+    """In-process circuit breaker for LLM API calls.
+
+    State transitions:
+        CLOSED  ──[N consecutive failures]──→  OPEN
+        OPEN    ──[recovery_timeout elapsed]──→ HALF_OPEN
+        HALF_OPEN ──[success]──→ CLOSED
+        HALF_OPEN ──[failure]──→ OPEN
+    """
+
+    def __init__(
+        self,
+        failure_threshold: int = _CB_FAILURE_THRESHOLD,
+        recovery_timeout: float = _CB_RECOVERY_TIMEOUT,
+    ) -> None:
+        self._failure_threshold = failure_threshold
+        self._recovery_timeout = recovery_timeout
+        self._state = _CBState.CLOSED
+        self._failure_count = 0
+        self._last_failure_time: float = 0.0
+        self._lock = asyncio.Lock()
+
+    @property
+    def state(self) -> _CBState:
+        """Return effective state (auto-transition OPEN → HALF_OPEN on timeout)."""
+        if self._state == _CBState.OPEN:
+            if time.monotonic() - self._last_failure_time >= self._recovery_timeout:
+                return _CBState.HALF_OPEN
+        return self._state
+
+    async def before_call(self) -> None:
+        """Check breaker state before making an API call.
+
+        Raises LLMClientError immediately if the circuit is OPEN.
+        """
+        async with self._lock:
+            effective = self.state
+            if effective == _CBState.OPEN:
+                remaining = self._recovery_timeout - (time.monotonic() - self._last_failure_time)
+                raise LLMClientError(
+                    f"Circuit breaker OPEN – LLM calls disabled for {remaining:.0f}s "
+                    f"after {self._failure_threshold} consecutive failures"
+                )
+            if effective == _CBState.HALF_OPEN:
+                logger.info("Circuit breaker HALF_OPEN – allowing probe request")
+
+    async def record_success(self) -> None:
+        """Reset failure counter on a successful call."""
+        async with self._lock:
+            if self._state != _CBState.CLOSED or self._failure_count > 0:
+                logger.info(
+                    "Circuit breaker → CLOSED (was %s, failures reset from %d)",
+                    self._state.value, self._failure_count,
+                )
+            self._failure_count = 0
+            self._state = _CBState.CLOSED
+
+    async def record_failure(self) -> None:
+        """Increment failure counter; trip breaker if threshold reached."""
+        async with self._lock:
+            self._failure_count += 1
+            self._last_failure_time = time.monotonic()
+            if self._failure_count >= self._failure_threshold:
+                self._state = _CBState.OPEN
+                logger.error(
+                    "Circuit breaker → OPEN after %d consecutive failures "
+                    "(will recover in %.0fs)",
+                    self._failure_count, self._recovery_timeout,
+                )
+            elif self._state == _CBState.HALF_OPEN:
+                # Probe failed → back to OPEN
+                self._state = _CBState.OPEN
+                logger.warning(
+                    "Circuit breaker HALF_OPEN probe failed → OPEN "
+                    "(will retry in %.0fs)", self._recovery_timeout,
+                )
+            else:
+                logger.warning(
+                    "Circuit breaker: failure %d/%d",
+                    self._failure_count, self._failure_threshold,
+                )
 
 
 class LLMClientError(Exception):
@@ -23,6 +125,7 @@ class LLMResponse:
 
 class OpenAILLMClient:
     _shared_http_client: httpx.AsyncClient | None = None
+    _circuit_breaker: _CircuitBreaker = _CircuitBreaker()
 
     def __init__(self) -> None:
         self.api_key = settings.openai_api_key
@@ -63,6 +166,106 @@ class OpenAILLMClient:
             cls._shared_http_client = None
             logger.info("Closed shared httpx.AsyncClient")
 
+    # ── Retry wrapper ───────────────────────────────────────────────────
+
+    async def _request_with_retry(
+        self,
+        url: str,
+        headers: dict[str, str],
+        payload: dict[str, Any],
+        *,
+        label: str = "OpenAI",
+    ) -> httpx.Response:
+        """POST with exponential backoff retry on transient errors.
+
+        Retries on: 429, 500, 502, 503, 529, and timeouts.
+        Respects Retry-After header on 429 responses.
+        Non-retryable errors (400, 401, 403, 404) raise immediately.
+        Integrates with circuit breaker to skip calls when API is down.
+        """
+        cb = self._circuit_breaker
+        await cb.before_call()  # raises LLMClientError if OPEN
+
+        client = self._get_http_client()
+        last_exc: Exception | None = None
+
+        for attempt in range(1, _MAX_RETRIES + 1):
+            try:
+                resp = await client.post(url, headers=headers, json=payload)
+
+                # Success
+                if resp.status_code < 400:
+                    await cb.record_success()
+                    return resp
+
+                # Non-retryable client errors — don't count toward circuit breaker
+                if resp.status_code < 500 and resp.status_code not in _RETRYABLE_STATUS_CODES:
+                    raise LLMClientError(f"{label} error {resp.status_code}: {resp.text}")
+
+                # Retryable error
+                if resp.status_code in _RETRYABLE_STATUS_CODES:
+                    wait = _BACKOFF_BASE * (_BACKOFF_FACTOR ** (attempt - 1))
+
+                    # Respect Retry-After header (429)
+                    retry_after = resp.headers.get("retry-after")
+                    if retry_after:
+                        try:
+                            wait = max(wait, float(retry_after))
+                        except (ValueError, TypeError):
+                            pass
+
+                    if attempt < _MAX_RETRIES:
+                        logger.warning(
+                            "%s returned %d (attempt %d/%d), retrying in %.1fs",
+                            label, resp.status_code, attempt, _MAX_RETRIES, wait,
+                        )
+                        await asyncio.sleep(wait)
+                        continue
+
+                    # Final attempt exhausted — record failure for circuit breaker
+                    await cb.record_failure()
+                    raise LLMClientError(
+                        f"{label} error {resp.status_code} after {_MAX_RETRIES} attempts: {resp.text}"
+                    )
+
+                # Other 5xx not in retryable set — raise immediately
+                raise LLMClientError(f"{label} error {resp.status_code}: {resp.text}")
+
+            except httpx.TimeoutException as exc:
+                last_exc = exc
+                if attempt < _MAX_RETRIES:
+                    wait = _BACKOFF_BASE * (_BACKOFF_FACTOR ** (attempt - 1))
+                    logger.warning(
+                        "%s request timed out (attempt %d/%d), retrying in %.1fs",
+                        label, attempt, _MAX_RETRIES, wait,
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+                await cb.record_failure()
+                raise LLMClientError(
+                    f"{label} request timed out after {_MAX_RETRIES} attempts "
+                    f"({self.timeout_seconds}s each)"
+                ) from exc
+
+            except httpx.HTTPError as exc:
+                last_exc = exc
+                if attempt < _MAX_RETRIES:
+                    wait = _BACKOFF_BASE * (_BACKOFF_FACTOR ** (attempt - 1))
+                    logger.warning(
+                        "%s HTTP error (attempt %d/%d): %s, retrying in %.1fs",
+                        label, attempt, _MAX_RETRIES, exc, wait,
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+                await cb.record_failure()
+                raise LLMClientError(
+                    f"{label} HTTP error after {_MAX_RETRIES} attempts: {exc}"
+                ) from exc
+
+        # Should not reach here, but just in case
+        await cb.record_failure()
+        raise LLMClientError(f"{label} failed after {_MAX_RETRIES} attempts") from last_exc
+
     async def create_embeddings(
         self,
         *,
@@ -80,16 +283,7 @@ class OpenAILLMClient:
         }
         payload = {"model": model, "input": texts}
 
-        try:
-            client = self._get_http_client()
-            resp = await client.post(url, headers=headers, json=payload)
-        except httpx.TimeoutException as exc:
-            raise LLMClientError(f"OpenAI Embeddings request timed out after {self.timeout_seconds}s") from exc
-        except httpx.HTTPError as exc:
-            raise LLMClientError(f"OpenAI Embeddings HTTP error: {exc}") from exc
-
-        if resp.status_code >= 400:
-            raise LLMClientError(f"OpenAI Embeddings error {resp.status_code}: {resp.text}")
+        resp = await self._request_with_retry(url, headers, payload, label="OpenAI Embeddings")
 
         data = resp.json()
         try:
@@ -133,16 +327,7 @@ class OpenAILLMClient:
         elif response_format_json:
             payload["response_format"] = {"type": "json_object"}
 
-        try:
-            client = self._get_http_client()
-            resp = await client.post(url, headers=headers, json=payload)
-        except httpx.TimeoutException as exc:
-            raise LLMClientError(f"OpenAI request timed out after {self.timeout_seconds}s") from exc
-        except httpx.HTTPError as exc:
-            raise LLMClientError(f"OpenAI HTTP error: {exc}") from exc
-
-        if resp.status_code >= 400:
-            raise LLMClientError(f"OpenAI error {resp.status_code}: {resp.text}")
+        resp = await self._request_with_retry(url, headers, payload, label="OpenAI Chat")
 
         data = resp.json()
         try:
@@ -162,8 +347,7 @@ class OpenAILLMClient:
         # Check for truncated output
         finish_reason = data.get("choices", [{}])[0].get("finish_reason", "")
         if finish_reason == "length":
-            import logging
-            logging.getLogger(__name__).warning(
+            logger.warning(
                 "OpenAI response truncated (finish_reason=length) for model=%s",
                 payload.get("model", "unknown"),
             )
