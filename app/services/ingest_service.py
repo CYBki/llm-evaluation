@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.models.trace import Trace
 from app.models.user import User
@@ -54,11 +54,29 @@ def create_traces_batch(db: Session, user: User, payloads: list[TraceCreate]) ->
 
 
 def list_traces(db: Session, user: User, page: int, per_page: int) -> tuple[list[Trace], int]:
-    query = db.query(Trace).filter(Trace.user_id == user.id).order_by(Trace.created_at.desc())
-    total = query.count()
-    items = query.offset((page - 1) * per_page).limit(per_page).all()
+    base = db.query(Trace).filter(Trace.user_id == user.id)
+    total = base.count()
+    items = (
+        base
+        .options(
+            joinedload(Trace.evaluation_result),
+            selectinload(Trace.step_evaluation_results),
+        )
+        .order_by(Trace.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
     return items, total
 
 
 def get_trace_by_id(db: Session, user: User, trace_id: str) -> Trace | None:
-    return db.query(Trace).filter(Trace.id == trace_id, Trace.user_id == user.id).first()
+    return (
+        db.query(Trace)
+        .options(
+            joinedload(Trace.evaluation_result),
+            selectinload(Trace.step_evaluation_results),
+        )
+        .filter(Trace.id == trace_id, Trace.user_id == user.id)
+        .first()
+    )
