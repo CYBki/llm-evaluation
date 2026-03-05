@@ -158,7 +158,7 @@ async def compute_hallucination_rubric(
 
     try:
         resp = await client.chat_completion(
-            model=settings.rag_metrics_model,
+            model=settings.stage_1_model,
             system_prompt=HALLUCINATION_SYSTEM_PROMPT,
             user_prompt=build_hallucination_user_prompt(answer, contexts),
             max_completion_tokens=4096,
