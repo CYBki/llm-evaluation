@@ -407,53 +407,181 @@ def compute_all_verdicts(scores: dict[str, float | None]) -> dict[str, str | Non
 
 _METRIC_LABELS: dict[str, str] = {m["key"]: m["label"] for m in METRIC_DEFINITIONS}
 
-_OVERALL_BANDS: list[tuple[float, str]] = [
-    (0.9, "Cevap genel olarak çok başarılı; tüm metrikler yüksek seviyede."),
-    (0.8, "Cevap iyi kalitede; küçük iyileştirmeler yapılabilir."),
-    (
-        0.6,
-        "Cevap kabul edilebilir düzeyde ancak bazı metriklerde iyileştirme gerekiyor.",
-    ),
-    (0.4, "Cevap kalitesi düşük; birden fazla alanda ciddi sorunlar tespit edildi."),
-    (0.0, "Cevap ciddi kalite sorunları içeriyor ve kapsamlı düzeltme gerektiriyor."),
-]
+# Human-readable aspect descriptions for building natural commentary
+_METRIC_ASPECT: dict[str, str] = {
+    "hallucination_score": "kaynaklara sadakat",
+    "faithfulness": "context'e bağlılık",
+    "answer_relevancy": "soruyla ilgililik",
+    "context_precision": "bağlam seçimi hassasiyeti",
+    "context_recall": "bilgi kapsamı",
+    "completeness": "cevap tamlığı",
+    "coherence": "mantıksal tutarlılık",
+    "clarity": "açıklık ve anlaşılırlık",
+    "helpfulness": "pratik fayda",
+    "citation_check": "kaynak referans doğruluğu",
+}
+
+# Reason templates for weak metrics — explains WHY the score dropped
+_WEAKNESS_REASONS: dict[str, dict[str, str]] = {
+    "hallucination_score": {
+        "bad": "cevap kaynaklarda bulunmayan iddialar içerdiği için",
+        "critical": "cevabın büyük kısmı uydurma bilgilerden oluştuğu için",
+        "warning": "bazı iddiaların kaynaklarla tam örtüşmemesi nedeniyle",
+    },
+    "faithfulness": {
+        "bad": "iddiaların önemli kısmı context ile desteklenemediği için",
+        "critical": "cevap neredeyse tamamen context dışı bilgiler barındırdığı için",
+        "warning": "bazı iddiaların context'te karşılığının bulunamaması nedeniyle",
+    },
+    "answer_relevancy": {
+        "bad": "cevap soruyla yeterince ilgili olmadığı için",
+        "warning": "cevabın sorunun bazı yönlerini atlaması nedeniyle",
+    },
+    "context_precision": {
+        "bad": "getirilen bağlam bilgilerinin çoğunun soruyla alakasız olması nedeniyle",
+        "warning": "bağlam seçiminde ilgisiz bilgiler bulunması nedeniyle",
+    },
+    "context_recall": {
+        "bad": "soruyu cevaplamak için gerekli bilgilerin context'lerde eksik olması nedeniyle",
+        "warning": "bazı kritik bilgilerin context'lerde bulunamaması nedeniyle",
+    },
+    "completeness": {
+        "bad": "cevabın sorunun önemli kısımlarını atlayarak yüzeysel kalması nedeniyle",
+        "warning": "eksik detaylar bulunması nedeniyle",
+    },
+    "coherence": {
+        "bad": "cevapta çelişkili veya mantıksal olarak dağınık ifadeler olması nedeniyle",
+        "warning": "küçük tutarsızlıklar ve kopuk geçişler bulunması nedeniyle",
+    },
+    "clarity": {
+        "bad": "cevabın belirsiz, karışık ve anlaşılması güç olması nedeniyle",
+        "warning": "bazı ifadelerin gereksiz karmaşık veya belirsiz olması nedeniyle",
+    },
+    "helpfulness": {
+        "bad": "cevabın kullanıcıya pratik fayda sağlamaması nedeniyle",
+        "warning": "cevabın yeterince spesifik ve pratik olmaması nedeniyle",
+    },
+    "citation_check": {
+        "bad": "kaynak referanslarının büyük kısmının hatalı veya eksik olması nedeniyle",
+        "warning": "bazı referansların eksik veya yanlış kaynağa işaret etmesi nedeniyle",
+    },
+}
+
+# Strength descriptions for high-scoring metrics
+_STRENGTH_DESC: dict[str, str] = {
+    "hallucination_score": "tüm iddialar kaynaklarla destekleniyor",
+    "faithfulness": "cevap tamamen context'e sadık kalıyor",
+    "answer_relevancy": "cevap soruyu doğrudan ve tam karşılıyor",
+    "context_precision": "getirilen bağlam bilgileri son derece isabetli",
+    "context_recall": "gerekli bilgilerin tamamı context'lerde mevcut",
+    "completeness": "sorunun tüm yönleri eksiksiz yanıtlanmış",
+    "coherence": "mantıksal akış sorunsuz ve tutarlı",
+    "clarity": "ifadeler açık ve anlaşılır",
+    "helpfulness": "cevap pratik ve faydalı bilgi sunuyor",
+    "citation_check": "kaynak referansları doğru ve eksiksiz",
+}
 
 
 def build_evaluation_commentary(
     overall_score: float | None,
     scores: dict[str, float | None],
 ) -> str | None:
-    """Build a 1-2 sentence overall commentary combining all metrics and the overall score."""
+    """Build a detailed 1-3 sentence commentary explaining why the score is what it is."""
     if overall_score is None:
         return None
 
-    # Pick the matching overall band sentence
-    overall_text = _OVERALL_BANDS[-1][1]
-    for threshold, text in _OVERALL_BANDS:
-        if overall_score >= threshold:
-            overall_text = text
-            break
+    # Categorize metrics by performance level
+    critical_metrics: list[tuple[str, float]] = []
+    bad_metrics: list[tuple[str, float]] = []
+    warning_metrics: list[tuple[str, float]] = []
+    good_metrics: list[tuple[str, float]] = []
+    excellent_metrics: list[tuple[str, float]] = []
 
-    # Find weak metrics (warning or worse) to mention specifically
-    weak: list[str] = []
-    strong: list[str] = []
     for key, val in scores.items():
         if val is None or key == "overall_score":
             continue
         level = get_verdict_level(key, val)
-        label = _METRIC_LABELS.get(key, key)
-        if level in ("bad", "critical"):
-            weak.append(label)
-        elif level == "good" and val is not None and val >= 0.9:
-            strong.append(label)
+        if level == "critical":
+            critical_metrics.append((key, val))
+        elif level == "bad":
+            bad_metrics.append((key, val))
+        elif level == "warning":
+            warning_metrics.append((key, val))
+        elif level == "good":
+            if val >= 0.95:
+                excellent_metrics.append((key, val))
+            else:
+                good_metrics.append((key, val))
 
-    parts = [f"Genel skor: {overall_score:.2f}. {overall_text}"]
+    parts: list[str] = [f"Genel skor: {overall_score:.2f}."]
 
-    if weak:
-        parts.append(f" Özellikle {', '.join(weak)} alanlarında iyileştirme öncelikli.")
-    elif strong and len(strong) <= 3:
-        parts.append(
-            f" {', '.join(strong)} metriklerinde özellikle güçlü performans gösterdi."
-        )
+    # ── Case 1: Critical or bad metrics exist — explain the drop
+    if critical_metrics or bad_metrics:
+        worst = critical_metrics + bad_metrics
+        # Sort by score ascending (worst first)
+        worst.sort(key=lambda x: x[1])
+
+        reason_parts: list[str] = []
+        for key, val in worst[:3]:  # max 3 worst metrics to mention
+            level = get_verdict_level(key, val)
+            label = _METRIC_LABELS.get(key, key)
+            reasons = _WEAKNESS_REASONS.get(key, {})
+            reason = reasons.get(level or "bad", f"{label} düşük olduğu için")
+            reason_parts.append(f"{label} ({val:.2f}) — {reason}")
+
+        parts.append(f" Genel skoru düşüren temel nedenler: {'; '.join(reason_parts)}.")
+
+        # If there are also good aspects, mention them briefly
+        if excellent_metrics:
+            strong_aspects = [
+                _STRENGTH_DESC.get(k, _METRIC_LABELS.get(k, k))
+                for k, _ in excellent_metrics[:3]
+            ]
+            parts.append(f" Olumlu yön olarak {', '.join(strong_aspects)}.")
+
+    # ── Case 2: Only warnings — acknowledge but note areas to improve
+    elif warning_metrics:
+        parts.append(" Cevap genel olarak kabul edilebilir düzeyde.")
+
+        warn_details: list[str] = []
+        for key, val in warning_metrics[:3]:
+            label = _METRIC_LABELS.get(key, key)
+            reasons = _WEAKNESS_REASONS.get(key, {})
+            reason = reasons.get("warning", f"{label} alanında iyileştirme gerekiyor")
+            warn_details.append(f"{label} ({val:.2f}) — {reason}")
+
+        parts.append(f" İyileştirme alanları: {'; '.join(warn_details)}.")
+
+        if excellent_metrics:
+            strong_aspects = [
+                _STRENGTH_DESC.get(k, _METRIC_LABELS.get(k, k))
+                for k, _ in excellent_metrics[:3]
+            ]
+            parts.append(f" Güçlü yönler: {', '.join(strong_aspects)}.")
+
+    # ── Case 3: All good/excellent — celebrate and explain strengths
+    else:
+        all_strong = excellent_metrics + good_metrics
+        if not all_strong:
+            parts.append(" Tüm metrikler iyi seviyede.")
+        elif len(excellent_metrics) >= 3:
+            strong_aspects = [
+                _STRENGTH_DESC.get(k, _METRIC_LABELS.get(k, k))
+                for k, _ in excellent_metrics
+            ]
+            parts.append(f" Cevap yüksek kalitede: {', '.join(strong_aspects)}.")
+            if good_metrics:
+                good_labels = [
+                    f"{_METRIC_LABELS.get(k, k)} ({v:.2f})" for k, v in good_metrics[:2]
+                ]
+                parts.append(f" {', '.join(good_labels)} de iyi seviyede.")
+        else:
+            all_labels = [
+                f"{_METRIC_LABELS.get(k, k)} ({v:.2f})"
+                for k, v in sorted(all_strong, key=lambda x: -x[1])[:4]
+            ]
+            parts.append(
+                f" Tüm metrikler iyi düzeyde; öne çıkanlar: {', '.join(all_labels)}."
+            )
 
     return "".join(parts)
