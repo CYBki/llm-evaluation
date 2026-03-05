@@ -97,7 +97,7 @@ class DetailsResponse(BaseModel):
 
 
 class VerdictsResponse(BaseModel):
-    """Verdict labels (good / warning / bad / critical) per metric."""
+    """Descriptive verdict labels (2-3 words) per metric."""
 
     overall_score: str | None = None
     clarity: str | None = None
@@ -122,6 +122,7 @@ class EvaluationResponse(BaseModel):
     flags: FlagsResponse
     reasoning_summary: str | None = None
     details: DetailsResponse
+    evaluation_commentary: str | None = None
 
 
 class EvaluationDetailResponse(EvaluationResponse):

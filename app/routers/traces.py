@@ -7,7 +7,7 @@ from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.trace import Trace
 from app.models.user import User
-from app.metrics.definitions import get_verdict
+from app.metrics.definitions import build_evaluation_commentary, get_verdict
 from app.schemas.ingest import (
     DetailsResponse,
     EvaluationDetailResponse,
@@ -76,6 +76,23 @@ def _build_verdicts(evaluation) -> VerdictsResponse:
     )
 
 
+def _build_commentary(evaluation) -> str | None:
+    """Build 1-2 sentence overall commentary from evaluation scores."""
+    scores = {
+        "clarity": evaluation.clarity,
+        "coherence": evaluation.coherence,
+        "helpfulness": evaluation.helpfulness,
+        "completeness": evaluation.completeness,
+        "answer_relevancy": evaluation.answer_relevancy,
+        "context_precision": evaluation.context_precision,
+        "context_recall": evaluation.context_recall,
+        "faithfulness": evaluation.faithfulness,
+        "hallucination_score": evaluation.hallucination_score,
+        "citation_check": evaluation.citation_check,
+    }
+    return build_evaluation_commentary(evaluation.overall_score, scores)
+
+
 def _build_step_evaluations(trace: Trace) -> list[StepEvaluationResponse]:
     """Build step-level evaluation responses from trace's step_evaluation_results."""
     step_evals = getattr(trace, "step_evaluation_results", None)
@@ -116,6 +133,7 @@ def _to_trace_response(trace: Trace) -> TraceResponse:
             flags=_build_flags(evaluation),
             reasoning_summary=evaluation.reasoning_summary,
             details=_build_details(evaluation),
+            evaluation_commentary=_build_commentary(evaluation),
             pipeline_score=evaluation.pipeline_score,
             pipeline_verdict=get_verdict("overall_score", evaluation.pipeline_score),
             step_evaluations=_build_step_evaluations(trace),
@@ -129,6 +147,7 @@ def _to_trace_response(trace: Trace) -> TraceResponse:
             flags=_build_flags(evaluation),
             reasoning_summary=evaluation.reasoning_summary,
             details=_build_details(evaluation),
+            evaluation_commentary=_build_commentary(evaluation),
         )
     else:
         eval_response = None
@@ -158,6 +177,7 @@ def _to_trace_detail_response(trace: Trace) -> TraceDetailResponse:
             flags=_build_flags(evaluation),
             reasoning_summary=evaluation.reasoning_summary,
             details=_build_details(evaluation),
+            evaluation_commentary=_build_commentary(evaluation),
             stage_1_reasoning=evaluation.stage_1_reasoning,
             disagreement_claims=evaluation.disagreement_claims,
             model_used=evaluation.model_used,
@@ -176,6 +196,7 @@ def _to_trace_detail_response(trace: Trace) -> TraceDetailResponse:
             flags=_build_flags(evaluation),
             reasoning_summary=evaluation.reasoning_summary,
             details=_build_details(evaluation),
+            evaluation_commentary=_build_commentary(evaluation),
             stage_1_reasoning=evaluation.stage_1_reasoning,
             disagreement_claims=evaluation.disagreement_claims,
             model_used=evaluation.model_used,
