@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import json
 import logging
 import threading
 from contextlib import contextmanager
@@ -129,6 +131,36 @@ def _apply_result_to_step(step_eval: StepEvaluationResult, result: dict) -> None
     step_eval.model_used = result.get("model_used")
 
 
+def _compute_content_hash(
+    question: str,
+    answer: str,
+    contexts: list[str] | None,
+    ground_truth: str | None,
+) -> str:
+    """SHA-256 hash of evaluation inputs for cache lookup."""
+    payload = json.dumps(
+        {"q": question, "a": answer, "c": contexts or [], "g": ground_truth or ""},
+        sort_keys=True,
+        ensure_ascii=False,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _copy_evaluation(source: EvaluationResult, target: EvaluationResult) -> None:
+    """Copy all metric fields from a cached evaluation to a new one."""
+    for col in (
+        "clarity", "is_off_topic", "completeness", "coherence", "helpfulness",
+        "is_deflection", "overall_score", "evaluation_confidence",
+        "reasoning_summary", "disagreement_claims", "stage_1_reasoning",
+        "raw_response", "model_used", "prompt_version", "rubric_version",
+        "answer_relevancy", "faithfulness", "hallucination_score",
+        "citation_check", "faithfulness_claims", "hallucination_claims",
+        "completeness_key_points", "context_precision", "context_recall",
+        "content_hash",
+    ):
+        setattr(target, col, getattr(source, col))
+
+
 def _extract_steps(trace: Trace) -> list[dict] | None:
     """Return steps list from trace metadata, or None."""
     meta = trace.meta
@@ -152,7 +184,35 @@ async def _evaluate_trace_async(trace_id: str) -> None:
             logger.warning("Trace %s not found for evaluation", trace_id)
             return
 
-        # ── 1. Trace-level evaluation (final answer) ──
+        # ── 0. Content hash for cache lookup ──
+        content_hash = _compute_content_hash(
+            trace.question, trace.answer, trace.contexts, trace.ground_truth
+        )
+
+        evaluation = db.query(EvaluationResult).filter(EvaluationResult.trace_id == trace.id).first()
+        if not evaluation:
+            evaluation = EvaluationResult(trace_id=trace.id)
+
+        # ── Cache hit? Copy results from a previous evaluation with same inputs ──
+        cached = (
+            db.query(EvaluationResult)
+            .filter(
+                EvaluationResult.content_hash == content_hash,
+                EvaluationResult.overall_score.isnot(None),
+                EvaluationResult.trace_id != trace.id,
+            )
+            .first()
+        )
+        if cached:
+            logger.info("Cache hit for trace %s (hash=%s) — copying from eval %s", trace_id, content_hash[:12], cached.trace_id)
+            _copy_evaluation(cached, evaluation)
+            trace.status = "completed"
+            db.add(evaluation)
+            db.add(trace)
+            db.commit()
+            return
+
+        # ── 1. Trace-level evaluation (final answer) — cache miss ──
         try:
             result = await evaluate_trace(
                 trace.question, trace.answer, trace.contexts, trace.ground_truth
@@ -164,11 +224,8 @@ async def _evaluate_trace_async(trace_id: str) -> None:
             db.commit()
             return
 
-        evaluation = db.query(EvaluationResult).filter(EvaluationResult.trace_id == trace.id).first()
-        if not evaluation:
-            evaluation = EvaluationResult(trace_id=trace.id)
-
         _apply_result_to_evaluation(evaluation, result)
+        evaluation.content_hash = content_hash
 
         # ── 2. Step-level evaluation (if multi-agent) — PARALLEL ──
         steps = _extract_steps(trace)

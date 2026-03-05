@@ -45,6 +45,9 @@ class EvaluationResult(Base):
     # ── Multi-agent pipeline score ──
     pipeline_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # ── Content-based cache key ──
+    content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+
     evaluated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     model_used: Mapped[str | None] = mapped_column(String(50), nullable=True)
     prompt_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
