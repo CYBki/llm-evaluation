@@ -106,6 +106,11 @@ def _apply_result_to_evaluation(evaluation: EvaluationResult, result: dict) -> N
     evaluation.completeness_key_points = result.get("completeness_key_points")
     evaluation.context_precision = result.get("context_precision")
     evaluation.context_recall = result.get("context_recall")
+    # Token usage & cost
+    evaluation.prompt_tokens = result.get("prompt_tokens")
+    evaluation.completion_tokens = result.get("completion_tokens")
+    evaluation.total_tokens = result.get("total_tokens")
+    evaluation.cost_usd = result.get("cost_usd")
 
 
 def _apply_result_to_step(step_eval: StepEvaluationResult, result: dict) -> None:
@@ -157,6 +162,7 @@ def _copy_evaluation(source: EvaluationResult, target: EvaluationResult) -> None
         "citation_check", "faithfulness_claims", "hallucination_claims",
         "completeness_key_points", "context_precision", "context_recall",
         "content_hash",
+        "prompt_tokens", "completion_tokens", "total_tokens", "cost_usd",
     ):
         setattr(target, col, getattr(source, col))
 

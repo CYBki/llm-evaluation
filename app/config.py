@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     # ── CORS ──
     cors_origins: str = ""  # comma-separated origins, e.g. "https://app.example.com,https://admin.example.com"
 
+    # ── Model pricing (per 1M tokens, USD) ──
+    stage1_input_price: float = 2.50   # gpt-5.2 input
+    stage1_output_price: float = 10.00  # gpt-5.2 output
+    stage2_input_price: float = 0.40   # gpt-5-mini input
+    stage2_output_price: float = 1.60   # gpt-5-mini output
+
     # ── Prompt truncation limits (characters) ──
     max_question_chars: int = 8_000
     max_answer_chars: int = 40_000

@@ -121,6 +121,9 @@ class LLMClientError(Exception):
 class LLMResponse:
     content: str
     raw: dict[str, Any]
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
 
 
 class OpenAILLMClient:
@@ -131,6 +134,9 @@ class OpenAILLMClient:
         self.api_key = settings.openai_api_key
         self.base_url = settings.openai_base_url.rstrip("/")
         self.timeout_seconds = settings.openai_timeout_seconds
+        # Per-instance token accumulator
+        self._accumulated_prompt_tokens = 0
+        self._accumulated_completion_tokens = 0
 
     @property
     def is_enabled(self) -> bool:
@@ -352,4 +358,20 @@ class OpenAILLMClient:
                 payload.get("model", "unknown"),
             )
 
-        return LLMResponse(content=content, raw=data)
+        # ── Extract token usage ──
+        usage = data.get("usage", {})
+        prompt_tokens = usage.get("prompt_tokens", 0)
+        completion_tokens = usage.get("completion_tokens", 0)
+        total_tokens = usage.get("total_tokens", 0)
+
+        # Accumulate on instance
+        self._accumulated_prompt_tokens += prompt_tokens
+        self._accumulated_completion_tokens += completion_tokens
+
+        return LLMResponse(
+            content=content,
+            raw=data,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+        )

@@ -477,6 +477,10 @@ async def compute_rag_metrics(
     ctx_precision = await ctx_precision_task
     ctx_recall = await ctx_recall_task
 
+    # Token usage from RAG metrics (accumulated on the client instance)
+    _rag_prompt = getattr(client, "_accumulated_prompt_tokens", 0)
+    _rag_completion = getattr(client, "_accumulated_completion_tokens", 0)
+
     return {
         "answer_relevancy": relevancy,
         "hallucination_score": hallucination_result.get("hallucination_score"),
@@ -488,6 +492,8 @@ async def compute_rag_metrics(
         "completeness_key_points": comp_result.get("key_points", []),
         "context_precision": ctx_precision,
         "context_recall": ctx_recall,
+        "_prompt_tokens": _rag_prompt,
+        "_completion_tokens": _rag_completion,
     }
 
 
