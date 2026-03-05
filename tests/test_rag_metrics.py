@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-import math
+import asyncio
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 from app.evaluation.rag_metrics import (
+    compute_context_precision,
+    compute_context_recall,
     compute_hallucination_score,
     cosine_similarity,
     has_citations,
@@ -163,10 +167,6 @@ class TestSafeParse:
 
 
 # ── compute_context_precision (unit-level — mocked LLM) ───────────────
-
-import asyncio
-from unittest.mock import AsyncMock, patch, MagicMock
-from app.evaluation.rag_metrics import compute_context_precision, compute_context_recall
 
 
 class TestComputeContextPrecision:

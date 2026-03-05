@@ -1,13 +1,11 @@
 import logging
 import sys
 import time
-import traceback
 import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.openapi.models import APIKey, APIKeyIn
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 from slowapi import _rate_limit_exceeded_handler
