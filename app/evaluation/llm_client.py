@@ -15,13 +15,13 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 # ── Retry configuration ────────────────────────────────────────────────
-_MAX_RETRIES = 3          # total attempts (1 original + 2 retries)
-_BACKOFF_BASE = 1.0       # initial wait in seconds
-_BACKOFF_FACTOR = 2.0     # multiplier per retry
+_MAX_RETRIES = 3  # total attempts (1 original + 2 retries)
+_BACKOFF_BASE = 1.0  # initial wait in seconds
+_BACKOFF_FACTOR = 2.0  # multiplier per retry
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 529}
 
 # ── Circuit breaker configuration ──────────────────────────────────────
-_CB_FAILURE_THRESHOLD = 5    # consecutive failures to trip the breaker
+_CB_FAILURE_THRESHOLD = 5  # consecutive failures to trip the breaker
 _CB_RECOVERY_TIMEOUT = 30.0  # seconds in OPEN state before trying HALF_OPEN
 
 
@@ -71,7 +71,9 @@ class _CircuitBreaker:
         with self._lock:
             effective = self.state
             if effective == _CBState.OPEN:
-                remaining = self._recovery_timeout - (time.monotonic() - self._last_failure_time)
+                remaining = self._recovery_timeout - (
+                    time.monotonic() - self._last_failure_time
+                )
                 raise LLMClientError(
                     f"Circuit breaker OPEN – LLM calls disabled for {remaining:.0f}s "
                     f"after {self._failure_threshold} consecutive failures"
@@ -85,7 +87,8 @@ class _CircuitBreaker:
             if self._state != _CBState.CLOSED or self._failure_count > 0:
                 logger.info(
                     "Circuit breaker → CLOSED (was %s, failures reset from %d)",
-                    self._state.value, self._failure_count,
+                    self._state.value,
+                    self._failure_count,
                 )
             self._failure_count = 0
             self._state = _CBState.CLOSED
@@ -100,19 +103,22 @@ class _CircuitBreaker:
                 logger.error(
                     "Circuit breaker → OPEN after %d consecutive failures "
                     "(will recover in %.0fs)",
-                    self._failure_count, self._recovery_timeout,
+                    self._failure_count,
+                    self._recovery_timeout,
                 )
             elif self._state == _CBState.HALF_OPEN:
                 # Probe failed → back to OPEN
                 self._state = _CBState.OPEN
                 logger.warning(
                     "Circuit breaker HALF_OPEN probe failed → OPEN "
-                    "(will retry in %.0fs)", self._recovery_timeout,
+                    "(will retry in %.0fs)",
+                    self._recovery_timeout,
                 )
             else:
                 logger.warning(
                     "Circuit breaker: failure %d/%d",
-                    self._failure_count, self._failure_threshold,
+                    self._failure_count,
+                    self._failure_threshold,
                 )
 
 
@@ -230,8 +236,13 @@ class OpenAILLMClient:
                     return resp
 
                 # Non-retryable client errors — don't count toward circuit breaker
-                if resp.status_code < 500 and resp.status_code not in _RETRYABLE_STATUS_CODES:
-                    raise LLMClientError(f"{label} error {resp.status_code}: {resp.text}")
+                if (
+                    resp.status_code < 500
+                    and resp.status_code not in _RETRYABLE_STATUS_CODES
+                ):
+                    raise LLMClientError(
+                        f"{label} error {resp.status_code}: {resp.text}"
+                    )
 
                 # Retryable error
                 if resp.status_code in _RETRYABLE_STATUS_CODES:
@@ -248,7 +259,11 @@ class OpenAILLMClient:
                     if attempt < _MAX_RETRIES:
                         logger.warning(
                             "%s returned %d (attempt %d/%d), retrying in %.1fs",
-                            label, resp.status_code, attempt, _MAX_RETRIES, wait,
+                            label,
+                            resp.status_code,
+                            attempt,
+                            _MAX_RETRIES,
+                            wait,
                         )
                         await asyncio.sleep(wait)
                         continue
@@ -268,7 +283,10 @@ class OpenAILLMClient:
                     wait = _BACKOFF_BASE * (_BACKOFF_FACTOR ** (attempt - 1))
                     logger.warning(
                         "%s request timed out (attempt %d/%d), retrying in %.1fs",
-                        label, attempt, _MAX_RETRIES, wait,
+                        label,
+                        attempt,
+                        _MAX_RETRIES,
+                        wait,
                     )
                     await asyncio.sleep(wait)
                     continue
@@ -284,7 +302,11 @@ class OpenAILLMClient:
                     wait = _BACKOFF_BASE * (_BACKOFF_FACTOR ** (attempt - 1))
                     logger.warning(
                         "%s HTTP error (attempt %d/%d): %s, retrying in %.1fs",
-                        label, attempt, _MAX_RETRIES, exc, wait,
+                        label,
+                        attempt,
+                        _MAX_RETRIES,
+                        exc,
+                        wait,
                     )
                     await asyncio.sleep(wait)
                     continue
@@ -295,7 +317,9 @@ class OpenAILLMClient:
 
         # Should not reach here, but just in case
         await cb.record_failure()
-        raise LLMClientError(f"{label} failed after {_MAX_RETRIES} attempts") from last_exc
+        raise LLMClientError(
+            f"{label} failed after {_MAX_RETRIES} attempts"
+        ) from last_exc
 
     async def create_embeddings(
         self,
@@ -314,7 +338,9 @@ class OpenAILLMClient:
         }
         payload = {"model": model, "input": texts}
 
-        resp = await self._request_with_retry(url, headers, payload, label="OpenAI Embeddings")
+        resp = await self._request_with_retry(
+            url, headers, payload, label="OpenAI Embeddings"
+        )
 
         data = resp.json()
         try:
@@ -358,7 +384,9 @@ class OpenAILLMClient:
         elif response_format_json:
             payload["response_format"] = {"type": "json_object"}
 
-        resp = await self._request_with_retry(url, headers, payload, label="OpenAI Chat")
+        resp = await self._request_with_retry(
+            url, headers, payload, label="OpenAI Chat"
+        )
 
         data = resp.json()
         try:

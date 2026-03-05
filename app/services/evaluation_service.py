@@ -26,10 +26,17 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # SSRF protection for webhook delivery
 # ---------------------------------------------------------------------------
-_BLOCKED_HOSTNAMES = frozenset({
-    "localhost", "db", "redis", "api", "worker", "pgadmin",
-    "metadata.google.internal",
-})
+_BLOCKED_HOSTNAMES = frozenset(
+    {
+        "localhost",
+        "db",
+        "redis",
+        "api",
+        "worker",
+        "pgadmin",
+        "metadata.google.internal",
+    }
+)
 
 
 def _is_private_ip(ip_str: str) -> bool:
@@ -64,7 +71,9 @@ def _validate_webhook_target(url: str) -> bool:
 
     # Resolve hostname and check all resulting IPs
     try:
-        addr_infos = socket.getaddrinfo(hostname, parsed.port or 443, proto=socket.IPPROTO_TCP)
+        addr_infos = socket.getaddrinfo(
+            hostname, parsed.port or 443, proto=socket.IPPROTO_TCP
+        )
     except socket.gaierror:
         logger.warning("SSRF block: DNS resolution failed for webhook URL %s", url)
         return False
@@ -73,7 +82,9 @@ def _validate_webhook_target(url: str) -> bool:
         ip = sockaddr[0]
         if _is_private_ip(ip):
             logger.warning(
-                "SSRF block: webhook URL %s resolves to private IP %s", url, ip,
+                "SSRF block: webhook URL %s resolves to private IP %s",
+                url,
+                ip,
             )
             return False
 
@@ -150,7 +161,11 @@ def wait_for_batch_threads(timeout: float = 60.0) -> None:
     """Wait for all running batch evaluation threads to finish (call on shutdown)."""
     for t in _active_batch_threads:
         if t.is_alive():
-            logger.info("Waiting for batch thread '%s' to finish (timeout=%.0fs)", t.name, timeout)
+            logger.info(
+                "Waiting for batch thread '%s' to finish (timeout=%.0fs)",
+                t.name,
+                timeout,
+            )
             t.join(timeout=timeout)
     _active_batch_threads.clear()
 
@@ -177,7 +192,9 @@ def _apply_result_to_evaluation(evaluation: EvaluationResult, result: dict) -> N
     evaluation.faithfulness = result.get("faithfulness")
     evaluation.hallucination_score = result.get("hallucination_score")
     evaluation.citation_check = result.get("citation_check")
-    evaluation.faithfulness_claims = result.get("hallucination_claims")  # faithfulness derived from same claims
+    evaluation.faithfulness_claims = result.get(
+        "hallucination_claims"
+    )  # faithfulness derived from same claims
     evaluation.hallucination_claims = result.get("hallucination_claims")
     evaluation.completeness_key_points = result.get("completeness_key_points")
     evaluation.context_precision = result.get("context_precision")
@@ -230,15 +247,35 @@ def _compute_content_hash(
 def _copy_evaluation(source: EvaluationResult, target: EvaluationResult) -> None:
     """Copy all metric fields from a cached evaluation to a new one."""
     for col in (
-        "clarity", "is_off_topic", "completeness", "coherence", "helpfulness",
-        "is_deflection", "overall_score", "evaluation_confidence",
-        "reasoning_summary", "disagreement_claims", "stage_1_reasoning",
-        "raw_response", "model_used", "prompt_version", "rubric_version",
-        "answer_relevancy", "faithfulness", "hallucination_score",
-        "citation_check", "faithfulness_claims", "hallucination_claims",
-        "completeness_key_points", "context_precision", "context_recall",
+        "clarity",
+        "is_off_topic",
+        "completeness",
+        "coherence",
+        "helpfulness",
+        "is_deflection",
+        "overall_score",
+        "evaluation_confidence",
+        "reasoning_summary",
+        "disagreement_claims",
+        "stage_1_reasoning",
+        "raw_response",
+        "model_used",
+        "prompt_version",
+        "rubric_version",
+        "answer_relevancy",
+        "faithfulness",
+        "hallucination_score",
+        "citation_check",
+        "faithfulness_claims",
+        "hallucination_claims",
+        "completeness_key_points",
+        "context_precision",
+        "context_recall",
         "content_hash",
-        "prompt_tokens", "completion_tokens", "total_tokens", "cost_usd",
+        "prompt_tokens",
+        "completion_tokens",
+        "total_tokens",
+        "cost_usd",
     ):
         setattr(target, col, getattr(source, col))
 
@@ -271,7 +308,11 @@ async def _evaluate_trace_async(trace_id: str) -> None:
             trace.question, trace.answer, trace.contexts, trace.ground_truth
         )
 
-        evaluation = db.query(EvaluationResult).filter(EvaluationResult.trace_id == trace.id).first()
+        evaluation = (
+            db.query(EvaluationResult)
+            .filter(EvaluationResult.trace_id == trace.id)
+            .first()
+        )
         if not evaluation:
             evaluation = EvaluationResult(trace_id=trace.id)
 
@@ -286,7 +327,12 @@ async def _evaluate_trace_async(trace_id: str) -> None:
             .first()
         )
         if cached:
-            logger.info("Cache hit for trace %s (hash=%s) — copying from eval %s", trace_id, content_hash[:12], cached.trace_id)
+            logger.info(
+                "Cache hit for trace %s (hash=%s) — copying from eval %s",
+                trace_id,
+                content_hash[:12],
+                cached.trace_id,
+            )
             _copy_evaluation(cached, evaluation)
             trace.status = "completed"
             db.add(evaluation)
@@ -312,10 +358,16 @@ async def _evaluate_trace_async(trace_id: str) -> None:
         # ── 2. Step-level evaluation (if multi-agent) — PARALLEL ──
         steps = _extract_steps(trace)
         if steps:
-            logger.info("Multi-agent trace %s detected with %d steps — running parallel step-level eval", trace_id, len(steps))
+            logger.info(
+                "Multi-agent trace %s detected with %d steps — running parallel step-level eval",
+                trace_id,
+                len(steps),
+            )
 
             # Clear previous step evaluations (re-evaluation case)
-            db.query(StepEvaluationResult).filter(StepEvaluationResult.trace_id == trace.id).delete()
+            db.query(StepEvaluationResult).filter(
+                StepEvaluationResult.trace_id == trace.id
+            ).delete()
 
             # Build coroutines for all steps and run them concurrently
             step_coros = [
@@ -338,7 +390,9 @@ async def _evaluate_trace_async(trace_id: str) -> None:
                 if isinstance(step_result, Exception):
                     logger.exception(
                         "Step %d eval failed for trace %s: %s",
-                        step_index, trace_id, step_result,
+                        step_index,
+                        trace_id,
+                        step_result,
                     )
                     continue
 
@@ -379,7 +433,9 @@ async def _evaluate_trace_async(trace_id: str) -> None:
         db.add(evaluation)
         db.add(trace)
         db.commit()
-        logger.info("Evaluation persisted for trace %s — status=%s", trace_id, trace.status)
+        logger.info(
+            "Evaluation persisted for trace %s — status=%s", trace_id, trace.status
+        )
 
         # ── Webhook callback ──
         if trace.webhook_url:
@@ -433,7 +489,9 @@ def _deliver_webhook(trace: Trace, evaluation: EvaluationResult) -> None:
     # SSRF protection: validate target before making any request
     if not _validate_webhook_target(url):
         logger.error(
-            "Webhook delivery blocked (SSRF) for trace %s → %s", trace.id, url,
+            "Webhook delivery blocked (SSRF) for trace %s → %s",
+            trace.id,
+            url,
         )
         return
 
@@ -454,24 +512,35 @@ def _deliver_webhook(trace: Trace, evaluation: EvaluationResult) -> None:
             if resp.status_code < 400:
                 logger.info(
                     "Webhook delivered for trace %s → %s (status=%d)",
-                    trace.id, url, resp.status_code,
+                    trace.id,
+                    url,
+                    resp.status_code,
                 )
                 return
             logger.warning(
                 "Webhook attempt %d/%d failed for trace %s → %s (status=%d)",
-                attempt, max_retries, trace.id, url, resp.status_code,
+                attempt,
+                max_retries,
+                trace.id,
+                url,
+                resp.status_code,
             )
         except Exception:
             logger.warning(
                 "Webhook attempt %d/%d error for trace %s → %s",
-                attempt, max_retries, trace.id, url,
+                attempt,
+                max_retries,
+                trace.id,
+                url,
                 exc_info=True,
             )
 
         if attempt < max_retries:
             time.sleep(2 ** (attempt - 1))  # 1s, 2s backoff
 
-    logger.error("Webhook delivery failed after %d attempts for trace %s", max_retries, trace.id)
+    logger.error(
+        "Webhook delivery failed after %d attempts for trace %s", max_retries, trace.id
+    )
 
 
 def _is_successful_result(result: dict) -> bool:

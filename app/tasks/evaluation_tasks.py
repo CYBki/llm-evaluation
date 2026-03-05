@@ -8,7 +8,12 @@ from app.tasks.celery_app import celery_app
 @celery_app.task(
     bind=True,
     name="app.tasks.evaluation_tasks.evaluate_trace_task",
-    autoretry_for=(LLMClientError, httpx.TimeoutException, httpx.HTTPError, ConnectionError),
+    autoretry_for=(
+        LLMClientError,
+        httpx.TimeoutException,
+        httpx.HTTPError,
+        ConnectionError,
+    ),
     retry_backoff=True,
     retry_jitter=True,
     retry_kwargs={"max_retries": 3},

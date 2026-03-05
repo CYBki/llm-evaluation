@@ -48,12 +48,13 @@ logger = logging.getLogger(__name__)
 # ── Capped penalty per problematic claim (agreement-independent) ────────
 # Each problematic claim subtracts a fixed penalty from 1.0.
 # Agreement claims do NOT enter the formula at all.
-_HALLUCINATION_UNSUPPORTED_PENALTY = 0.15     # 1 unsupported  → 0.85
-_HALLUCINATION_CONTRADICTION_PENALTY = 0.30   # 1 contradiction → 0.70
-_FAITHFULNESS_PER_CLAIM_PENALTY = 0.20        # 1 unfaithful   → 0.80
+_HALLUCINATION_UNSUPPORTED_PENALTY = 0.15  # 1 unsupported  → 0.85
+_HALLUCINATION_CONTRADICTION_PENALTY = 0.30  # 1 contradiction → 0.70
+_FAITHFULNESS_PER_CLAIM_PENALTY = 0.20  # 1 unfaithful   → 0.80
 
 
 # ── Cosine Similarity (pure Python, no numpy needed) ────────────────────
+
 
 def _dot(a: list[float], b: list[float]) -> float:
     return sum(x * y for x, y in zip(a, b))
@@ -72,6 +73,7 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 # ── 1. Answer Relevancy (Statement-Level Relevancy) ─────────────────
+
 
 async def compute_answer_relevancy(
     client: OpenAILLMClient,
@@ -112,8 +114,7 @@ async def compute_answer_relevancy(
             return None
 
         relevant_count = sum(
-            1 for s in statements
-            if isinstance(s, dict) and s.get("relevant") is True
+            1 for s in statements if isinstance(s, dict) and s.get("relevant") is True
         )
         total = len(statements)
         score = round(relevant_count / total, 4) if total > 0 else None
@@ -126,6 +127,7 @@ async def compute_answer_relevancy(
 
 
 # ── 2. Hallucination Score (Dedicated Rubric Judge) ────────────────────
+
 
 async def compute_hallucination_rubric(
     client: OpenAILLMClient,
@@ -145,7 +147,11 @@ async def compute_hallucination_rubric(
         }
     """
     if not client.is_enabled or not contexts:
-        return {"hallucination_score": None, "faithfulness": None, "hallucination_claims": []}
+        return {
+            "hallucination_score": None,
+            "faithfulness": None,
+            "hallucination_claims": [],
+        }
 
     try:
         stage_1 = await client.chat_completion(
@@ -174,7 +180,11 @@ async def compute_hallucination_rubric(
                 "Raw response (first 500 chars): %s",
                 (stage_2.content or "")[:500],
             )
-            return {"hallucination_score": None, "faithfulness": None, "hallucination_claims": []}
+            return {
+                "hallucination_score": None,
+                "faithfulness": None,
+                "hallucination_claims": [],
+            }
 
         # Capped penalty: each problematic claim subtracts a fixed amount.
         # Agreement claims are ignored — score is independent of how many
@@ -195,26 +205,36 @@ async def compute_hallucination_rubric(
         h_score = round(max(0.0, 1.0 - total_penalty), 4)
 
         # Faithfulness: fixed penalty per unfaithful claim (agreement-independent)
-        faithfulness = round(max(0.0, 1.0 - unfaithful_count * _FAITHFULNESS_PER_CLAIM_PENALTY), 4)
+        faithfulness = round(
+            max(0.0, 1.0 - unfaithful_count * _FAITHFULNESS_PER_CLAIM_PENALTY), 4
+        )
 
         return {
-            "hallucination_score": max(0.0, min(1.0, h_score)) if h_score is not None else None,
-            "faithfulness": max(0.0, min(1.0, faithfulness)) if faithfulness is not None else None,
+            "hallucination_score": max(0.0, min(1.0, h_score))
+            if h_score is not None
+            else None,
+            "faithfulness": max(0.0, min(1.0, faithfulness))
+            if faithfulness is not None
+            else None,
             "hallucination_claims": claims,
         }
 
     except LLMClientError:
         logger.exception("hallucination rubric computation failed")
-        return {"hallucination_score": None, "faithfulness": None, "hallucination_claims": []}
+        return {
+            "hallucination_score": None,
+            "faithfulness": None,
+            "hallucination_claims": [],
+        }
 
 
 # ── 4. Citation Check ──────────────────────────────────────────────────
 
 _CITATION_PATTERN = re.compile(
-    r"\[(\d+)\]"            # [1], [2], ...
+    r"\[(\d+)\]"  # [1], [2], ...
     r"|\[Source\s*(\d+)\]"  # [Source 1], [Source 2], ...
-    r"|\(bkz\.?\s*context\s*(\d+)\)"  # (bkz. context 1)
-    , re.IGNORECASE
+    r"|\(bkz\.?\s*context\s*(\d+)\)",  # (bkz. context 1)
+    re.IGNORECASE,
 )
 
 
@@ -271,6 +291,7 @@ async def compute_citation_check(
 
 # ── 5. Completeness (Key-Point Extraction + Verification) ────────────────
 
+
 async def compute_completeness(
     client: OpenAILLMClient,
     question: str,
@@ -325,6 +346,7 @@ async def compute_completeness(
 
 # ── 6. Context Precision ───────────────────────────────────────────────
 
+
 async def compute_context_precision(
     client: OpenAILLMClient,
     question: str,
@@ -359,8 +381,7 @@ async def compute_context_precision(
             return None
 
         relevant_count = sum(
-            1 for c in ctx_items
-            if isinstance(c, dict) and c.get("relevant") is True
+            1 for c in ctx_items if isinstance(c, dict) and c.get("relevant") is True
         )
         total = len(ctx_items)
         return round(relevant_count / total, 4) if total > 0 else None
@@ -371,6 +392,7 @@ async def compute_context_precision(
 
 
 # ── 7. Context Recall ──────────────────────────────────────────────────
+
 
 async def compute_context_recall(
     client: OpenAILLMClient,
@@ -394,7 +416,9 @@ async def compute_context_recall(
         resp = await client.chat_completion(
             model=settings.rag_metrics_model,
             system_prompt=CONTEXT_RECALL_SYSTEM_PROMPT,
-            user_prompt=build_context_recall_user_prompt(question, contexts, ground_truth),
+            user_prompt=build_context_recall_user_prompt(
+                question, contexts, ground_truth
+            ),
             max_completion_tokens=2048,
             json_schema=CONTEXT_RECALL_JSON_SCHEMA,
         )
@@ -403,14 +427,14 @@ async def compute_context_recall(
         items = parsed.get("items", [])
         if not isinstance(items, list) or len(items) == 0:
             logger.warning(
-                "context_recall: no items returned. "
-                "Raw response (first 500 chars): %s",
+                "context_recall: no items returned. Raw response (first 500 chars): %s",
                 (resp.content or "")[:500],
             )
             return None
 
         found_count = sum(
-            1 for item in items
+            1
+            for item in items
             if isinstance(item, dict) and item.get("verdict") == "found"
         )
         total = len(items)
@@ -422,6 +446,7 @@ async def compute_context_recall(
 
 
 # ── Orchestrator ───────────────────────────────────────────────────────
+
 
 async def compute_rag_metrics(
     question: str,
@@ -454,9 +479,7 @@ async def compute_rag_metrics(
     relevancy_task = asyncio.create_task(
         compute_answer_relevancy(client, question, answer, ctx)
     )
-    citation_task = asyncio.create_task(
-        compute_citation_check(client, answer, ctx)
-    )
+    citation_task = asyncio.create_task(compute_citation_check(client, answer, ctx))
     hallucination_task = asyncio.create_task(
         compute_hallucination_rubric(client, answer, ctx)
     )
@@ -498,6 +521,7 @@ async def compute_rag_metrics(
 
 
 # ── Helpers ────────────────────────────────────────────────────────────
+
 
 def _safe_parse(content: str) -> dict[str, Any]:
     """Best-effort JSON parse from LLM output."""

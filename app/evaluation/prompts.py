@@ -50,38 +50,61 @@ STAGE_2_JSON_SCHEMA = {
     "schema": {
         "type": "object",
         "properties": {
-            "clarity":                {"type": "number"},
-            "is_off_topic":           {"type": "boolean"},
-            "completeness":           {"type": "number"},
-            "coherence":              {"type": "number"},
-            "helpfulness":            {"type": "number"},
-            "is_deflection":          {"type": "boolean"},
-            "overall_score":          {"type": "number"},
-            "evaluation_confidence":  {"type": "number"},
-            "reasoning_summary":      {"type": "string"},
+            "clarity": {"type": "number"},
+            "is_off_topic": {"type": "boolean"},
+            "completeness": {"type": "number"},
+            "coherence": {"type": "number"},
+            "helpfulness": {"type": "number"},
+            "is_deflection": {"type": "boolean"},
+            "overall_score": {"type": "number"},
+            "evaluation_confidence": {"type": "number"},
+            "reasoning_summary": {"type": "string"},
             "disagreement_claims": {
                 "type": "array",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "context_quote":      {"type": "string"},
-                        "context_quote_type": {"type": "string", "enum": ["instruction", "factual claim"]},
-                        "answer_quote":       {"type": "string"},
-                        "reasoning":          {"type": "string"},
-                        "disagreement_type":  {"type": "string", "enum": ["agreement", "unsupported claim", "confirmed contradiction"]}
+                        "context_quote": {"type": "string"},
+                        "context_quote_type": {
+                            "type": "string",
+                            "enum": ["instruction", "factual claim"],
+                        },
+                        "answer_quote": {"type": "string"},
+                        "reasoning": {"type": "string"},
+                        "disagreement_type": {
+                            "type": "string",
+                            "enum": [
+                                "agreement",
+                                "unsupported claim",
+                                "confirmed contradiction",
+                            ],
+                        },
                     },
-                    "required": ["context_quote", "context_quote_type", "answer_quote", "reasoning", "disagreement_type"],
-                    "additionalProperties": False
-                }
-            }
+                    "required": [
+                        "context_quote",
+                        "context_quote_type",
+                        "answer_quote",
+                        "reasoning",
+                        "disagreement_type",
+                    ],
+                    "additionalProperties": False,
+                },
+            },
         },
         "required": [
-            "clarity", "is_off_topic", "completeness",
-            "coherence", "helpfulness", "is_deflection", "overall_score",
-            "evaluation_confidence", "reasoning_summary", "disagreement_claims"
+            "clarity",
+            "is_off_topic",
+            "completeness",
+            "coherence",
+            "helpfulness",
+            "is_deflection",
+            "overall_score",
+            "evaluation_confidence",
+            "reasoning_summary",
+            "disagreement_claims",
         ],
-        "additionalProperties": False
-    }
+        "additionalProperties": False,
+    },
 }
 
 _EXAMPLE_JSON = """{
@@ -138,10 +161,15 @@ def build_stage_1_user_prompt(question: str, answer: str, contexts: list[str]) -
     question = truncate_text(question, settings.max_question_chars, label="question")
     answer = truncate_text(answer, settings.max_answer_chars, label="answer")
     contexts = truncate_contexts(
-        contexts, max_total_chars=settings.max_context_total_chars,
+        contexts,
+        max_total_chars=settings.max_context_total_chars,
         max_single_chars=settings.max_single_context_chars,
     )
-    context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
+    context_block = (
+        "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)])
+        if contexts
+        else "(empty)"
+    )
     return (
         f"{RUBRIC_BLOCK}\n\n"
         "Question:\n"
@@ -232,7 +260,11 @@ HALLUCINATION_STAGE_2_JSON_SCHEMA = {
                         "reasoning": {"type": "string"},
                         "disagreement_type": {
                             "type": "string",
-                            "enum": ["agreement", "unsupported claim", "confirmed contradiction"],
+                            "enum": [
+                                "agreement",
+                                "unsupported claim",
+                                "confirmed contradiction",
+                            ],
                         },
                     },
                     "required": [
@@ -268,10 +300,15 @@ If no claims are found, return {"disagreement_claims": []}.
 def build_hallucination_stage_1_user_prompt(answer: str, contexts: list[str]) -> str:
     answer = truncate_text(answer, settings.max_answer_chars, label="answer")
     contexts = truncate_contexts(
-        contexts, max_total_chars=settings.max_context_total_chars,
+        contexts,
+        max_total_chars=settings.max_context_total_chars,
         max_single_chars=settings.max_single_context_chars,
     )
-    context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
+    context_block = (
+        "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)])
+        if contexts
+        else "(empty)"
+    )
     return (
         "ANSWER:\n"
         f"{answer}\n\n"
@@ -331,7 +368,12 @@ CITATION_CHECK_JSON_SCHEMA = {
                         },
                         "reason": {"type": "string"},
                     },
-                    "required": ["citation_text", "referenced_context_index", "verdict", "reason"],
+                    "required": [
+                        "citation_text",
+                        "referenced_context_index",
+                        "verdict",
+                        "reason",
+                    ],
                     "additionalProperties": False,
                 },
             }
@@ -345,14 +387,19 @@ CITATION_CHECK_JSON_SCHEMA = {
 def build_citation_check_user_prompt(answer: str, contexts: list[str]) -> str:
     answer = truncate_text(answer, settings.max_answer_chars, label="answer")
     contexts = truncate_contexts(
-        contexts, max_total_chars=settings.max_context_total_chars,
+        contexts,
+        max_total_chars=settings.max_context_total_chars,
         max_single_chars=settings.max_single_context_chars,
     )
-    context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
+    context_block = (
+        "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)])
+        if contexts
+        else "(empty)"
+    )
     return (
         "ANSWER:\n"
         f"{answer}\n\n"
-        f"CONTEXT PASSAGES ({len(contexts)} total, indexed 0 to {len(contexts)-1}):\n"
+        f"CONTEXT PASSAGES ({len(contexts)} total, indexed 0 to {len(contexts) - 1}):\n"
         f"{context_block}\n\n"
         "Find and verify all source citations in the answer.\n"
         "Any citation referencing an index outside 0-{max_idx} is INCORRECT.\n"
@@ -489,14 +536,21 @@ def _key_point_count(question: str) -> int:
         return 5
 
 
-def build_completeness_user_prompt(question: str, answer: str, contexts: list[str]) -> str:
+def build_completeness_user_prompt(
+    question: str, answer: str, contexts: list[str]
+) -> str:
     question = truncate_text(question, settings.max_question_chars, label="question")
     answer = truncate_text(answer, settings.max_answer_chars, label="answer")
     contexts = truncate_contexts(
-        contexts, max_total_chars=settings.max_context_total_chars,
+        contexts,
+        max_total_chars=settings.max_context_total_chars,
         max_single_chars=settings.max_single_context_chars,
     )
-    context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
+    context_block = (
+        "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)])
+        if contexts
+        else "(empty)"
+    )
     n = _key_point_count(question)
     return (
         "QUESTION:\n"
@@ -566,10 +620,15 @@ CONTEXT_PRECISION_JSON_SCHEMA = {
 def build_context_precision_user_prompt(question: str, contexts: list[str]) -> str:
     question = truncate_text(question, settings.max_question_chars, label="question")
     contexts = truncate_contexts(
-        contexts, max_total_chars=settings.max_context_total_chars,
+        contexts,
+        max_total_chars=settings.max_context_total_chars,
         max_single_chars=settings.max_single_context_chars,
     )
-    context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
+    context_block = (
+        "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)])
+        if contexts
+        else "(empty)"
+    )
     return (
         "QUESTION:\n"
         f"{question}\n\n"
@@ -639,12 +698,19 @@ def build_context_recall_user_prompt(
 ) -> str:
     question = truncate_text(question, settings.max_question_chars, label="question")
     contexts = truncate_contexts(
-        contexts, max_total_chars=settings.max_context_total_chars,
+        contexts,
+        max_total_chars=settings.max_context_total_chars,
         max_single_chars=settings.max_single_context_chars,
     )
     if ground_truth:
-        ground_truth = truncate_text(ground_truth, settings.max_ground_truth_chars, label="ground_truth")
-    context_block = "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)]) if contexts else "(empty)"
+        ground_truth = truncate_text(
+            ground_truth, settings.max_ground_truth_chars, label="ground_truth"
+        )
+    context_block = (
+        "\n".join([f"[{i}] {c}" for i, c in enumerate(contexts)])
+        if contexts
+        else "(empty)"
+    )
 
     if ground_truth:
         return (

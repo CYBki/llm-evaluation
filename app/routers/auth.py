@@ -4,7 +4,12 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.exceptions import DuplicateEmailError
 from app.rate_limit import limiter
-from app.schemas.auth import LoginRequest, LoginResponse, RegisterRequest, RegisterResponse
+from app.schemas.auth import (
+    LoginRequest,
+    LoginResponse,
+    RegisterRequest,
+    RegisterResponse,
+)
 from app.services.auth_service import authenticate_user, create_user
 
 router = APIRouter()
@@ -24,12 +29,16 @@ router = APIRouter()
     },
 )
 @limiter.limit("3/minute")
-def register(request: Request, payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
+def register(
+    request: Request, payload: RegisterRequest, db: Session = Depends(get_db)
+) -> RegisterResponse:
     """Yeni kullanıcı oluşturur ve API key üretir."""
     try:
         user, api_key = create_user(db, payload.email, payload.password)
     except DuplicateEmailError:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="Email already registered"
+        )
     return RegisterResponse(
         user_id=str(user.id),
         email=user.email,
@@ -50,11 +59,15 @@ def register(request: Request, payload: RegisterRequest, db: Session = Depends(g
     },
 )
 @limiter.limit("5/minute")
-def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
+def login(
+    request: Request, payload: LoginRequest, db: Session = Depends(get_db)
+) -> LoginResponse:
     """Mevcut kullanıcı ile giriş yapar."""
     user = authenticate_user(db, payload.email, payload.password)
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
+        )
     return LoginResponse(
         user_id=str(user.id),
         email=user.email,

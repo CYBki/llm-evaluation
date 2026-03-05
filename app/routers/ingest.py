@@ -6,7 +6,12 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.middleware.auth import get_current_user
 from app.models.user import User
-from app.schemas.ingest import TraceBatchCreate, TraceBatchIngestResponse, TraceCreate, TraceIngestResponse
+from app.schemas.ingest import (
+    TraceBatchCreate,
+    TraceBatchIngestResponse,
+    TraceCreate,
+    TraceIngestResponse,
+)
 from app.services.ingest_service import create_trace, create_traces_batch
 
 router = APIRouter()
@@ -34,7 +39,9 @@ def ingest(
 ) -> TraceIngestResponse:
     """Tek bir trace alır, DB'ye kaydeder ve LLM evaluation'ı tetikler."""
     trace = create_trace(db, current_user, payload)
-    return TraceIngestResponse(id=str(trace.id), status=trace.status, created_at=trace.created_at)
+    return TraceIngestResponse(
+        id=str(trace.id), status=trace.status, created_at=trace.created_at
+    )
 
 
 @router.post(
@@ -58,5 +65,10 @@ def ingest_batch(
 ) -> TraceBatchIngestResponse:
     """Toplu trace alır ve her birini bağımsız olarak değerlendirir."""
     traces = create_traces_batch(db, current_user, payload.traces)
-    items = [TraceIngestResponse(id=str(trace.id), status=trace.status, created_at=trace.created_at) for trace in traces]
+    items = [
+        TraceIngestResponse(
+            id=str(trace.id), status=trace.status, created_at=trace.created_at
+        )
+        for trace in traces
+    ]
     return TraceBatchIngestResponse(items=items, count=len(items))

@@ -10,7 +10,11 @@ class TraceCreate(BaseModel):
     contexts: list[str] | None = None
     ground_truth: str | None = None
     metadata: dict | None = None
-    webhook_url: str | None = Field(default=None, max_length=2048, description="URL to receive POST callback when evaluation completes")
+    webhook_url: str | None = Field(
+        default=None,
+        max_length=2048,
+        description="URL to receive POST callback when evaluation completes",
+    )
 
     @field_validator("webhook_url")
     @classmethod
@@ -48,8 +52,10 @@ class TraceBatchIngestResponse(BaseModel):
 
 # ── Evaluation Scores (user-facing) ────────────────────────────────────
 
+
 class ScoresResponse(BaseModel):
     """Numeric metric scores."""
+
     clarity: float | None = None
     coherence: float | None = None
     helpfulness: float | None = None
@@ -64,6 +70,7 @@ class ScoresResponse(BaseModel):
 
 class FlagsResponse(BaseModel):
     """Boolean quality flags."""
+
     is_off_topic: bool | None = None
     is_deflection: bool | None = None
 
@@ -84,12 +91,14 @@ class HallucinationClaimResponse(BaseModel):
 
 class DetailsResponse(BaseModel):
     """Detailed claim-level and key-point-level breakdowns."""
+
     hallucination_claims: list[HallucinationClaimResponse] = []
     completeness_key_points: list[CompletenessKeyPointResponse] = []
 
 
 class VerdictsResponse(BaseModel):
     """Verdict labels (good / warning / bad / critical) per metric."""
+
     overall_score: str | None = None
     clarity: str | None = None
     coherence: str | None = None
@@ -105,6 +114,7 @@ class VerdictsResponse(BaseModel):
 
 class EvaluationResponse(BaseModel):
     """Clean user-facing evaluation output."""
+
     overall_score: float | None = None
     confidence: float | None = None
     scores: ScoresResponse
@@ -116,6 +126,7 @@ class EvaluationResponse(BaseModel):
 
 class EvaluationDetailResponse(EvaluationResponse):
     """Extended evaluation output including internal debug fields."""
+
     stage_1_reasoning: str | None = None
     disagreement_claims: list[dict] | None = None
     model_used: str | None = None
@@ -125,8 +136,10 @@ class EvaluationDetailResponse(EvaluationResponse):
 
 # ── Step (Agent) Evaluation ────────────────────────────────────────────
 
+
 class StepEvaluationResponse(BaseModel):
     """Per-agent-step evaluation result using the same metrics."""
+
     step_index: int
     agent_name: str
     overall_score: float | None = None
@@ -140,6 +153,7 @@ class StepEvaluationResponse(BaseModel):
 
 class MultiAgentEvaluationResponse(EvaluationResponse):
     """Evaluation response extended with step-level results and pipeline score."""
+
     pipeline_score: float | None = None
     pipeline_verdict: str | None = None
     step_evaluations: list[StepEvaluationResponse] = []
@@ -147,12 +161,14 @@ class MultiAgentEvaluationResponse(EvaluationResponse):
 
 class MultiAgentEvaluationDetailResponse(EvaluationDetailResponse):
     """Detail response extended with step-level results and pipeline score."""
+
     pipeline_score: float | None = None
     pipeline_verdict: str | None = None
     step_evaluations: list[StepEvaluationResponse] = []
 
 
 # ── Trace Responses ────────────────────────────────────────────────────
+
 
 class TraceResponse(BaseModel):
     id: str
@@ -167,6 +183,7 @@ class TraceResponse(BaseModel):
 
 class TraceDetailResponse(BaseModel):
     """Trace with full evaluation debug info (detail=full)."""
+
     id: str
     question: str
     answer: str
@@ -174,7 +191,9 @@ class TraceDetailResponse(BaseModel):
     metadata: dict | None = None
     status: str
     created_at: datetime
-    evaluation: MultiAgentEvaluationDetailResponse | EvaluationDetailResponse | None = None
+    evaluation: MultiAgentEvaluationDetailResponse | EvaluationDetailResponse | None = (
+        None
+    )
 
 
 class TraceListResponse(BaseModel):

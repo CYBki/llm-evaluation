@@ -3,7 +3,10 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from app.models.trace import Trace
 from app.models.user import User
 from app.schemas.ingest import TraceCreate
-from app.services.evaluation_service import enqueue_batch_evaluation, enqueue_trace_evaluation
+from app.services.evaluation_service import (
+    enqueue_batch_evaluation,
+    enqueue_trace_evaluation,
+)
 
 
 def create_trace(db: Session, user: User, payload: TraceCreate) -> Trace:
@@ -27,7 +30,9 @@ def create_trace(db: Session, user: User, payload: TraceCreate) -> Trace:
     return trace
 
 
-def create_traces_batch(db: Session, user: User, payloads: list[TraceCreate]) -> list[Trace]:
+def create_traces_batch(
+    db: Session, user: User, payloads: list[TraceCreate]
+) -> list[Trace]:
     traces: list[Trace] = []
     for payload in payloads:
         trace = Trace(
@@ -55,13 +60,14 @@ def create_traces_batch(db: Session, user: User, payloads: list[TraceCreate]) ->
     return traces
 
 
-def list_traces(db: Session, user: User, page: int, per_page: int) -> tuple[list[Trace], int]:
+def list_traces(
+    db: Session, user: User, page: int, per_page: int
+) -> tuple[list[Trace], int]:
     base = db.query(Trace).filter(Trace.user_id == user.id)
     # Fetch per_page+1 items to detect has_next without a separate COUNT query
     # We still compute total for backward compat, but only on first page
     items = (
-        base
-        .options(
+        base.options(
             joinedload(Trace.evaluation_result),
             selectinload(Trace.step_evaluation_results),
         )

@@ -38,7 +38,11 @@ def create_user(db: Session, email: str, password: str) -> tuple[User, str]:
 
 def get_user_by_api_key(db: Session, api_key: str) -> User | None:
     hashed = _hash_api_key(api_key)
-    return db.query(User).filter(User.api_key_hash == hashed, User.is_active.is_(True)).first()
+    return (
+        db.query(User)
+        .filter(User.api_key_hash == hashed, User.is_active.is_(True))
+        .first()
+    )
 
 
 def authenticate_user(db: Session, email: str, password: str) -> User | None:

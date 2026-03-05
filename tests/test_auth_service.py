@@ -41,14 +41,18 @@ class TestHashApiKey:
 class TestCreateUser:
     def test_duplicate_email_raises(self):
         db = MagicMock()
-        db.query.return_value.filter.return_value.first.return_value = MagicMock()  # existing user
+        db.query.return_value.filter.return_value.first.return_value = (
+            MagicMock()
+        )  # existing user
 
         with pytest.raises(DuplicateEmailError):
             create_user(db, "dup@test.com", "password123")
 
     def test_success(self):
         db = MagicMock()
-        db.query.return_value.filter.return_value.first.return_value = None  # no existing
+        db.query.return_value.filter.return_value.first.return_value = (
+            None  # no existing
+        )
 
         user, api_key = create_user(db, "new@test.com", "password123")
 

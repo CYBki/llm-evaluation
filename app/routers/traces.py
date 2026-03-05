@@ -64,10 +64,14 @@ def _build_verdicts(evaluation) -> VerdictsResponse:
         helpfulness=get_verdict("helpfulness", evaluation.helpfulness),
         completeness=get_verdict("completeness", evaluation.completeness),
         answer_relevancy=get_verdict("answer_relevancy", evaluation.answer_relevancy),
-        context_precision=get_verdict("context_precision", evaluation.context_precision),
+        context_precision=get_verdict(
+            "context_precision", evaluation.context_precision
+        ),
         context_recall=get_verdict("context_recall", evaluation.context_recall),
         faithfulness=get_verdict("faithfulness", evaluation.faithfulness),
-        hallucination_score=get_verdict("hallucination_score", evaluation.hallucination_score),
+        hallucination_score=get_verdict(
+            "hallucination_score", evaluation.hallucination_score
+        ),
         citation_check=get_verdict("citation_check", evaluation.citation_check),
     )
 
@@ -205,7 +209,9 @@ def _to_trace_detail_response(trace: Trace) -> TraceDetailResponse:
 )
 def get_traces(
     page: int = Query(default=1, ge=1, description="Sayfa numarası (1'den başlar)"),
-    per_page: int = Query(default=20, ge=1, le=100, description="Sayfa başına trace sayısı (max 100)"),
+    per_page: int = Query(
+        default=20, ge=1, le=100, description="Sayfa başına trace sayısı (max 100)"
+    ),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TraceListResponse:
@@ -228,17 +234,25 @@ def get_traces(
 )
 def get_trace(
     trace_id: str,
-    detail: str = Query(default="summary", regex="^(summary|full)$", description="Detay seviyesi: 'summary' veya 'full'"),
+    detail: str = Query(
+        default="summary",
+        regex="^(summary|full)$",
+        description="Detay seviyesi: 'summary' veya 'full'",
+    ),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TraceResponse | TraceDetailResponse:
     try:
         UUID(trace_id)
     except ValueError:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid trace ID format")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid trace ID format"
+        )
     trace = get_trace_by_id(db, current_user, trace_id)
     if not trace:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Trace not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Trace not found"
+        )
 
     if detail == "full":
         return _to_trace_detail_response(trace)

@@ -50,7 +50,9 @@ try:
     logging.root.setLevel(logging.INFO)
 except Exception:
     # Fallback to basic logging if JSON formatter fails
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +62,7 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 # ── Application lifespan (startup / shutdown) ────────────────────────────
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -131,9 +134,11 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 #   - Specific list  → only those origins allowed
 _raw_origins = settings.cors_origins.strip()
 if _raw_origins:
-    _origin_list = ["*"] if _raw_origins == "*" else [
-        o.strip() for o in _raw_origins.split(",") if o.strip()
-    ]
+    _origin_list = (
+        ["*"]
+        if _raw_origins == "*"
+        else [o.strip() for o in _raw_origins.split(",") if o.strip()]
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_origin_list,
@@ -211,7 +216,12 @@ app.include_router(traces_router, prefix="/api/v1/traces", tags=["traces"])
 app.include_router(metrics_router, prefix="/api/v1/metrics", tags=["metrics"])
 
 
-@app.get("/health", tags=["health"], summary="Sistem sağlık kontrolü", description="API, veritabanı ve Redis durumunu kontrol eder.")
+@app.get(
+    "/health",
+    tags=["health"],
+    summary="Sistem sağlık kontrolü",
+    description="API, veritabanı ve Redis durumunu kontrol eder.",
+)
 def health() -> dict:
     """API, PostgreSQL ve Redis bağlantı durumunu döner."""
     status_detail = {"api": "ok"}
@@ -224,6 +234,7 @@ def health() -> dict:
 
     try:
         import redis
+
         r = redis.from_url(settings.redis_url, socket_timeout=2)
         r.ping()
         status_detail["redis"] = "ok"

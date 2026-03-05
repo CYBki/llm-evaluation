@@ -22,11 +22,17 @@ from app.evaluation.rag_metrics import compute_rag_metrics
 logger = logging.getLogger(__name__)
 
 _FLOAT_FIELDS = [
-    "clarity", "completeness", "coherence",
-    "helpfulness", "overall_score", "evaluation_confidence",
+    "clarity",
+    "completeness",
+    "coherence",
+    "helpfulness",
+    "overall_score",
+    "evaluation_confidence",
 ]
 _BOOL_FIELDS = ["is_off_topic", "is_deflection"]
-_REQUIRED_FIELDS = _FLOAT_FIELDS + _BOOL_FIELDS + ["reasoning_summary", "disagreement_claims"]
+_REQUIRED_FIELDS = (
+    _FLOAT_FIELDS + _BOOL_FIELDS + ["reasoning_summary", "disagreement_claims"]
+)
 
 _MAX_STAGE_2_RETRIES = 3
 
@@ -55,15 +61,15 @@ def _compute_cost(
 # hallucination_score and completeness come from RAG analytical metrics.
 _OVERALL_WEIGHTS = {
     "hallucination_score": 0.15,
-    "faithfulness":       0.10,
-    "answer_relevancy":   0.15,
-    "completeness":       0.10,
-    "context_precision":  0.10,
-    "context_recall":     0.10,
-    "helpfulness":        0.15,
-    "coherence":          0.05,
-    "clarity":            0.05,
-    "citation_check":     0.05,
+    "faithfulness": 0.10,
+    "answer_relevancy": 0.15,
+    "completeness": 0.10,
+    "context_precision": 0.10,
+    "context_recall": 0.10,
+    "helpfulness": 0.15,
+    "coherence": 0.05,
+    "clarity": 0.05,
+    "citation_check": 0.05,
 }
 
 # When is_deflection is True, cap overall_score to this value.
@@ -126,15 +132,22 @@ def _compute_overall_score(
     # Apply score caps
     if is_deflection and score is not None:
         score = min(score, _DEFLECTION_SCORE_CAP)
-        logger.info("is_deflection=True → overall_score capped at %.2f", _DEFLECTION_SCORE_CAP)
+        logger.info(
+            "is_deflection=True → overall_score capped at %.2f", _DEFLECTION_SCORE_CAP
+        )
 
     if is_off_topic and score is not None:
         score = min(score, _OFF_TOPIC_SCORE_CAP)
-        logger.info("is_off_topic=True → overall_score capped at %.2f", _OFF_TOPIC_SCORE_CAP)
+        logger.info(
+            "is_off_topic=True → overall_score capped at %.2f", _OFF_TOPIC_SCORE_CAP
+        )
 
     if has_contradiction and score is not None:
         score = min(score, _CONTRADICTION_SCORE_CAP)
-        logger.info("contradicted_claim=True → overall_score capped at %.2f", _CONTRADICTION_SCORE_CAP)
+        logger.info(
+            "contradicted_claim=True → overall_score capped at %.2f",
+            _CONTRADICTION_SCORE_CAP,
+        )
 
     return score
 
@@ -145,7 +158,11 @@ def _has_contradicted_claims(claims: list[dict[str, Any]] | None) -> bool:
         return False
 
     for claim in claims:
-        if isinstance(claim, dict) and str(claim.get("disagreement_type", "")).lower() == "confirmed contradiction":
+        if (
+            isinstance(claim, dict)
+            and str(claim.get("disagreement_type", "")).lower()
+            == "confirmed contradiction"
+        ):
             return True
     return False
 
@@ -183,7 +200,12 @@ def _coerce_off_topic_flag(
     return False
 
 
-async def evaluate_trace(question: str, answer: str, contexts: list[str] | None, ground_truth: str | None = None) -> dict[str, Any]:
+async def evaluate_trace(
+    question: str,
+    answer: str,
+    contexts: list[str] | None,
+    ground_truth: str | None = None,
+) -> dict[str, Any]:
     context_items = contexts or []
     client = OpenAILLMClient()
 
@@ -257,7 +279,12 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
                 )
             else:
                 validation_errors = _describe_validation_errors(parsed)
-                logger.info("Stage 2 retry %d/%d – errors: %s", attempt + 1, _MAX_STAGE_2_RETRIES, validation_errors)
+                logger.info(
+                    "Stage 2 retry %d/%d – errors: %s",
+                    attempt + 1,
+                    _MAX_STAGE_2_RETRIES,
+                    validation_errors,
+                )
                 s2_resp = await client.chat_completion(
                     model=settings.stage_2_model,
                     system_prompt=STAGE_2_REPAIR_SYSTEM_PROMPT,
@@ -305,7 +332,9 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
                 rag_results,
                 is_deflection=bool(parsed.get("is_deflection")),
                 is_off_topic=is_off_topic_value,
-                has_contradiction=_has_contradicted_claims(rag_results.get("hallucination_claims")),
+                has_contradiction=_has_contradicted_claims(
+                    rag_results.get("hallucination_claims")
+                ),
             ),
             "evaluation_confidence": parsed.get("evaluation_confidence"),
             "reasoning_summary": parsed.get("reasoning_summary"),
@@ -326,11 +355,17 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
             # Token usage & cost (per-stage for accurate pricing)
             "prompt_tokens": stage1_prompt_tokens + stage2_prompt_tokens,
             "completion_tokens": stage1_completion_tokens + stage2_completion_tokens,
-            "total_tokens": (stage1_prompt_tokens + stage2_prompt_tokens
-                            + stage1_completion_tokens + stage2_completion_tokens),
+            "total_tokens": (
+                stage1_prompt_tokens
+                + stage2_prompt_tokens
+                + stage1_completion_tokens
+                + stage2_completion_tokens
+            ),
             "cost_usd": _compute_cost(
-                stage1_prompt_tokens, stage1_completion_tokens,
-                stage2_prompt_tokens, stage2_completion_tokens,
+                stage1_prompt_tokens,
+                stage1_completion_tokens,
+                stage2_prompt_tokens,
+                stage2_completion_tokens,
             ),
         }
     except LLMClientError as exc:
@@ -465,18 +500,32 @@ def _regex_extract_scores(stage_1_text: str) -> dict[str, Any]:
                 pass
 
     # Booleans
-    off_topic_m = re.search(r"(?:IS.?OFF.?TOPIC|off.?topic)[:\s=]+(true|false|evet|hayir)", stage_1_text, re.IGNORECASE)
+    off_topic_m = re.search(
+        r"(?:IS.?OFF.?TOPIC|off.?topic)[:\s=]+(true|false|evet|hayir)",
+        stage_1_text,
+        re.IGNORECASE,
+    )
     if off_topic_m:
         result["is_off_topic"] = off_topic_m.group(1).lower() in ("true", "evet")
 
-    defl_m = re.search(r"(?:IS.?DEFLECTION|deflection)[:\s=]+(true|false|evet|hayir)", stage_1_text, re.IGNORECASE)
+    defl_m = re.search(
+        r"(?:IS.?DEFLECTION|deflection)[:\s=]+(true|false|evet|hayir)",
+        stage_1_text,
+        re.IGNORECASE,
+    )
     if defl_m:
         result["is_deflection"] = defl_m.group(1).lower() in ("true", "evet")
 
     # Compute overall_score as average of found float scores
-    found_scores = [v for k, v in result.items() if k in _FLOAT_FIELDS and isinstance(v, (int, float))]
+    found_scores = [
+        v
+        for k, v in result.items()
+        if k in _FLOAT_FIELDS and isinstance(v, (int, float))
+    ]
     if found_scores:
         result["overall_score"] = round(sum(found_scores) / len(found_scores), 2)
-        result["evaluation_confidence"] = result.get("evaluation_confidence", round(len(found_scores) / len(_FLOAT_FIELDS), 2))
+        result["evaluation_confidence"] = result.get(
+            "evaluation_confidence", round(len(found_scores) / len(_FLOAT_FIELDS), 2)
+        )
 
     return result

@@ -91,10 +91,16 @@ class TestCoerceTypes:
 class TestValidateSchema:
     def test_valid(self):
         data = {
-            "clarity": 0.8, "specificity": 0.7, "completeness": 0.6,
-            "coherence": 0.7, "helpfulness": 0.8, "overall_score": 0.7,
-            "evaluation_confidence": 0.9, "is_off_topic": False,
-            "is_deflection": False, "reasoning_summary": "Good.",
+            "clarity": 0.8,
+            "specificity": 0.7,
+            "completeness": 0.6,
+            "coherence": 0.7,
+            "helpfulness": 0.8,
+            "overall_score": 0.7,
+            "evaluation_confidence": 0.9,
+            "is_off_topic": False,
+            "is_deflection": False,
+            "reasoning_summary": "Good.",
             "disagreement_claims": [],
         }
         assert _validate_schema(data) == []
@@ -106,10 +112,16 @@ class TestValidateSchema:
 
     def test_wrong_type(self):
         data = {
-            "clarity": "not_a_number", "specificity": 0.7, "completeness": 0.6,
-            "coherence": 0.7, "helpfulness": 0.8, "overall_score": 0.7,
-            "evaluation_confidence": 0.9, "is_off_topic": False,
-            "is_deflection": False, "reasoning_summary": "Test.",
+            "clarity": "not_a_number",
+            "specificity": 0.7,
+            "completeness": 0.6,
+            "coherence": 0.7,
+            "helpfulness": 0.8,
+            "overall_score": 0.7,
+            "evaluation_confidence": 0.9,
+            "is_off_topic": False,
+            "is_deflection": False,
+            "reasoning_summary": "Test.",
             "disagreement_claims": [],
         }
         errors = _validate_schema(data)
@@ -145,6 +157,7 @@ class TestRegexExtractScores:
 
 # ── _compute_overall_score ─────────────────────────────────────────────
 
+
 class TestComputeOverallScore:
     def test_full_metrics(self):
         parsed = {"coherence": 0.8, "helpfulness": 0.7, "clarity": 0.9}
@@ -171,18 +184,30 @@ class TestComputeOverallScore:
         assert score == 0.5
 
     def test_all_none_falls_back(self):
-        parsed = {"coherence": None, "helpfulness": None, "clarity": None, "overall_score": 0.42}
+        parsed = {
+            "coherence": None,
+            "helpfulness": None,
+            "clarity": None,
+            "overall_score": 0.42,
+        }
         rag = {"completeness": None, "answer_relevancy": None}
         score = _compute_overall_score(parsed, rag)
         assert score == 0.42
 
     def test_rag_completeness_overrides_parsed(self):
-        parsed = {"coherence": 0.8, "helpfulness": 0.8, "clarity": 0.8, "completeness": 0.3}
+        parsed = {
+            "coherence": 0.8,
+            "helpfulness": 0.8,
+            "clarity": 0.8,
+            "completeness": 0.3,
+        }
         rag = {"completeness": 0.9, "answer_relevancy": 0.8}
         score = _compute_overall_score(parsed, rag)
         # completeness should use 0.9 (rag) not 0.3 (parsed)
         # total_weight = 0.15+0.10+0.10+0.10+0.05 = 0.50
-        expected = (0.15*0.9 + 0.10*0.8 + 0.10*0.8 + 0.10*0.8 + 0.05*0.8) / 0.50
+        expected = (
+            0.15 * 0.9 + 0.10 * 0.8 + 0.10 * 0.8 + 0.10 * 0.8 + 0.05 * 0.8
+        ) / 0.50
         assert score == pytest.approx(expected, abs=0.001)
 
     def test_perfect_scores(self):
@@ -201,8 +226,10 @@ class TestComputeOverallScore:
         """When context metrics are present (hallucination missing), score still normalizes correctly."""
         parsed = {"coherence": 0.8, "helpfulness": 0.8, "clarity": 0.8}
         rag = {
-            "completeness": 0.8, "answer_relevancy": 0.8,
-            "context_precision": 0.8, "context_recall": 0.8,
+            "completeness": 0.8,
+            "answer_relevancy": 0.8,
+            "context_precision": 0.8,
+            "context_recall": 0.8,
         }
         score = _compute_overall_score(parsed, rag)
         # All available metrics are 0.8; normalization preserves 0.8
@@ -212,8 +239,10 @@ class TestComputeOverallScore:
         """Only context_precision available, context_recall None — partial re-weighting."""
         parsed = {"coherence": 1.0, "helpfulness": 1.0, "clarity": 1.0}
         rag = {
-            "completeness": 1.0, "answer_relevancy": 1.0,
-            "context_precision": 0.5, "context_recall": None,
+            "completeness": 1.0,
+            "answer_relevancy": 1.0,
+            "context_precision": 0.5,
+            "context_recall": None,
         }
         score = _compute_overall_score(parsed, rag)
         # missing hallucination_score and context_recall -> total_weight=0.65

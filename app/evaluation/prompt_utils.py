@@ -70,7 +70,9 @@ def truncate_contexts(
             dropped += 1
             continue
 
-        truncated = truncate_text(ctx, min(max_single_chars, remaining), label=f"context[{i}]")
+        truncated = truncate_text(
+            ctx, min(max_single_chars, remaining), label=f"context[{i}]"
+        )
         result.append(truncated)
         remaining -= len(truncated)
 

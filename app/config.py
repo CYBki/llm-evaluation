@@ -27,10 +27,10 @@ class Settings(BaseSettings):
     webhook_max_retries: int = 3
 
     # ── Model pricing (per 1M tokens, USD) ──
-    stage1_input_price: float = 2.50   # gpt-5.2 input
+    stage1_input_price: float = 2.50  # gpt-5.2 input
     stage1_output_price: float = 10.00  # gpt-5.2 output
-    stage2_input_price: float = 0.40   # gpt-5-mini input
-    stage2_output_price: float = 1.60   # gpt-5-mini output
+    stage2_input_price: float = 0.40  # gpt-5-mini input
+    stage2_output_price: float = 1.60  # gpt-5-mini output
 
     # ── Prompt truncation limits (characters) ──
     max_question_chars: int = 8_000
