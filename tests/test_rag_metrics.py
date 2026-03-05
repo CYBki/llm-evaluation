@@ -10,7 +10,7 @@ import pytest
 from app.evaluation.rag_metrics import (
     compute_context_precision,
     compute_context_recall,
-    compute_hallucination_score,
+    score_hallucination_claims,
     cosine_similarity,
     has_citations,
     _safe_parse,
@@ -57,55 +57,132 @@ class TestCosineSimilarity:
         assert cosine_similarity(a, b) == pytest.approx(1.0)
 
 
-# ── compute_hallucination_score ────────────────────────────────────────
+# ── score_hallucination_claims (capped penalty model) ──────────────────
 
 
-class TestHallucinationScore:
-    def test_all_supported(self):
+class TestScoreHallucinationClaims:
+    def test_all_agreement(self):
+        """All claims are agreement → no penalty → score 1.0."""
         claims = [
-            {"claim": "A", "verdict": "supported", "reason": "ok"},
-            {"claim": "B", "verdict": "supported", "reason": "ok"},
+            {"answer_quote": "A", "disagreement_type": "agreement", "reasoning": "ok"},
+            {"answer_quote": "B", "disagreement_type": "agreement", "reasoning": "ok"},
         ]
-        assert compute_hallucination_score(claims) == 1.0
+        result = score_hallucination_claims(claims)
+        assert result["hallucination_score"] == 1.0
+        assert result["faithfulness"] == 1.0
 
-    def test_all_contradicted(self):
+    def test_single_unsupported(self):
+        """One unsupported claim → penalty 0.15 → score 0.85."""
         claims = [
-            {"claim": "A", "verdict": "contradicted", "reason": "wrong"},
-            {"claim": "B", "verdict": "contradicted", "reason": "wrong"},
+            {"answer_quote": "A", "disagreement_type": "agreement", "reasoning": "ok"},
+            {
+                "answer_quote": "B",
+                "disagreement_type": "unsupported claim",
+                "reasoning": "no info",
+            },
         ]
-        assert compute_hallucination_score(claims) == 0.0
+        result = score_hallucination_claims(claims)
+        assert result["hallucination_score"] == pytest.approx(0.85)
+        assert result["faithfulness"] == pytest.approx(0.8)
 
-    def test_mixed(self):
+    def test_single_contradiction(self):
+        """One contradiction → penalty 0.30 → score 0.70."""
         claims = [
-            {"claim": "A", "verdict": "supported", "reason": "ok"},
-            {"claim": "B", "verdict": "not_supported", "reason": "no info"},
-            {"claim": "C", "verdict": "supported", "reason": "ok"},
-            {"claim": "D", "verdict": "contradicted", "reason": "wrong"},
+            {
+                "answer_quote": "A",
+                "disagreement_type": "confirmed contradiction",
+                "reasoning": "wrong",
+            },
         ]
-        # 2 supported, 1 not_supported, 1 contradicted → hallucinated=2, total=4
-        assert compute_hallucination_score(claims) == pytest.approx(0.5)
+        result = score_hallucination_claims(claims)
+        assert result["hallucination_score"] == pytest.approx(0.7)
+        assert result["faithfulness"] == pytest.approx(0.8)
+
+    def test_mixed_penalties(self):
+        """1 unsupported + 1 contradiction → penalty 0.15 + 0.30 = 0.45 → score 0.55."""
+        claims = [
+            {"answer_quote": "A", "disagreement_type": "agreement", "reasoning": "ok"},
+            {
+                "answer_quote": "B",
+                "disagreement_type": "unsupported claim",
+                "reasoning": "no info",
+            },
+            {
+                "answer_quote": "C",
+                "disagreement_type": "confirmed contradiction",
+                "reasoning": "wrong",
+            },
+        ]
+        result = score_hallucination_claims(claims)
+        assert result["hallucination_score"] == pytest.approx(0.55)
+        # faithfulness: 2 unfaithful → 1.0 - 2*0.20 = 0.60
+        assert result["faithfulness"] == pytest.approx(0.6)
+
+    def test_penalty_floors_at_zero(self):
+        """Many penalties → score floors at 0.0, never goes negative."""
+        claims = [
+            {
+                "answer_quote": "A",
+                "disagreement_type": "confirmed contradiction",
+                "reasoning": "x",
+            },
+            {
+                "answer_quote": "B",
+                "disagreement_type": "confirmed contradiction",
+                "reasoning": "x",
+            },
+            {
+                "answer_quote": "C",
+                "disagreement_type": "confirmed contradiction",
+                "reasoning": "x",
+            },
+            {
+                "answer_quote": "D",
+                "disagreement_type": "confirmed contradiction",
+                "reasoning": "x",
+            },
+            {
+                "answer_quote": "E",
+                "disagreement_type": "confirmed contradiction",
+                "reasoning": "x",
+            },
+        ]
+        result = score_hallucination_claims(claims)
+        # 5 × 0.30 = 1.50 penalty → max(0, 1-1.50) = 0.0
+        assert result["hallucination_score"] == 0.0
+        # 5 × 0.20 = 1.00 penalty → max(0, 1-1.00) = 0.0
+        assert result["faithfulness"] == 0.0
 
     def test_empty_claims(self):
-        assert compute_hallucination_score([]) is None
+        result = score_hallucination_claims([])
+        assert result["hallucination_score"] is None
+        assert result["faithfulness"] is None
 
     def test_none_claims(self):
-        assert compute_hallucination_score(None) is None
+        result = score_hallucination_claims(None)
+        assert result["hallucination_score"] is None
+        assert result["faithfulness"] is None
 
-    def test_single_supported(self):
-        claims = [{"claim": "A", "verdict": "supported", "reason": "ok"}]
-        assert compute_hallucination_score(claims) == 1.0
-
-    def test_single_not_supported(self):
-        claims = [{"claim": "A", "verdict": "not_supported", "reason": "n/a"}]
-        assert compute_hallucination_score(claims) == 0.0
-
-    def test_all_not_supported(self):
-        claims = [
-            {"claim": "A", "verdict": "not_supported", "reason": "n/a"},
-            {"claim": "B", "verdict": "not_supported", "reason": "n/a"},
-            {"claim": "C", "verdict": "not_supported", "reason": "n/a"},
+    def test_agreement_claims_dont_affect_score(self):
+        """Adding more agreement claims doesn't change the score."""
+        base_claims = [
+            {
+                "answer_quote": "X",
+                "disagreement_type": "unsupported claim",
+                "reasoning": "n/a",
+            },
         ]
-        assert compute_hallucination_score(claims) == 0.0
+        many_agreements = base_claims + [
+            {
+                "answer_quote": f"A{i}",
+                "disagreement_type": "agreement",
+                "reasoning": "ok",
+            }
+            for i in range(10)
+        ]
+        result_base = score_hallucination_claims(base_claims)
+        result_many = score_hallucination_claims(many_agreements)
+        assert result_base["hallucination_score"] == result_many["hallucination_score"]
 
 
 # ── has_citations ──────────────────────────────────────────────────────

@@ -48,6 +48,47 @@ _HALLUCINATION_CONTRADICTION_PENALTY = 0.30  # 1 contradiction → 0.70
 _FAITHFULNESS_PER_CLAIM_PENALTY = 0.20  # 1 unfaithful   → 0.80
 
 
+def score_hallucination_claims(
+    claims: list[dict[str, Any]] | None,
+) -> dict[str, float | None]:
+    """Pure scoring function for hallucination claims (capped penalty model).
+
+    Each problematic claim subtracts a fixed penalty from 1.0.
+    Agreement claims do NOT enter the formula.
+
+    Args:
+        claims: List of claim dicts with 'disagreement_type' field.
+
+    Returns:
+        {"hallucination_score": float | None, "faithfulness": float | None}
+    """
+    if not claims:
+        return {"hallucination_score": None, "faithfulness": None}
+
+    total_penalty = 0.0
+    unfaithful_count = 0
+    for item in claims:
+        if not isinstance(item, dict):
+            continue
+        disagreement_type = str(item.get("disagreement_type", "")).lower()
+        if disagreement_type == "unsupported claim":
+            total_penalty += _HALLUCINATION_UNSUPPORTED_PENALTY
+            unfaithful_count += 1
+        elif disagreement_type == "confirmed contradiction":
+            total_penalty += _HALLUCINATION_CONTRADICTION_PENALTY
+            unfaithful_count += 1
+
+    h_score = round(max(0.0, 1.0 - total_penalty), 4)
+    faithfulness = round(
+        max(0.0, 1.0 - unfaithful_count * _FAITHFULNESS_PER_CLAIM_PENALTY), 4
+    )
+
+    return {
+        "hallucination_score": max(0.0, min(1.0, h_score)),
+        "faithfulness": max(0.0, min(1.0, faithfulness)),
+    }
+
+
 # ── Cosine Similarity (pure Python, no numpy needed) ────────────────────
 
 
@@ -182,36 +223,11 @@ async def compute_hallucination_rubric(
                 "hallucination_claims": [],
             }
 
-        # Capped penalty: each problematic claim subtracts a fixed amount.
-        # Agreement claims are ignored — score is independent of how many
-        # agreement claims the LLM happens to extract.
-        total_penalty = 0.0
-        unfaithful_count = 0
-        for item in claims:
-            if not isinstance(item, dict):
-                continue
-            disagreement_type = str(item.get("disagreement_type", "")).lower()
-            if disagreement_type == "unsupported claim":
-                total_penalty += _HALLUCINATION_UNSUPPORTED_PENALTY
-                unfaithful_count += 1
-            elif disagreement_type == "confirmed contradiction":
-                total_penalty += _HALLUCINATION_CONTRADICTION_PENALTY
-                unfaithful_count += 1
-
-        h_score = round(max(0.0, 1.0 - total_penalty), 4)
-
-        # Faithfulness: fixed penalty per unfaithful claim (agreement-independent)
-        faithfulness = round(
-            max(0.0, 1.0 - unfaithful_count * _FAITHFULNESS_PER_CLAIM_PENALTY), 4
-        )
+        scores = score_hallucination_claims(claims)
 
         return {
-            "hallucination_score": max(0.0, min(1.0, h_score))
-            if h_score is not None
-            else None,
-            "faithfulness": max(0.0, min(1.0, faithfulness))
-            if faithfulness is not None
-            else None,
+            "hallucination_score": scores["hallucination_score"],
+            "faithfulness": scores["faithfulness"],
             "hallucination_claims": claims,
         }
 

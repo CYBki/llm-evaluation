@@ -141,7 +141,7 @@ class TestRegexExtractScores:
         """
         result = _regex_extract_scores(text)
         assert result["clarity"] == 0.8
-        assert result["specificity"] == 0.7
+        assert result["completeness"] == 0.6
         assert result["overall_score"] is not None
 
     def test_no_scores(self):
@@ -163,19 +163,18 @@ class TestComputeOverallScore:
         parsed = {"coherence": 0.8, "helpfulness": 0.7, "clarity": 0.9}
         rag = {"completeness": 0.8, "answer_relevancy": 0.7}
         score = _compute_overall_score(parsed, rag)
-        # hallucination_score and context metrics missing -> dynamic re-weighting.
-        # available: coherence(0.10), helpfulness(0.10), clarity(0.05),
-        #            completeness(0.15), answer_relevancy(0.10) = total 0.50
-        # weighted_sum = 0.10*0.8 + 0.10*0.7 + 0.05*0.9 + 0.15*0.8 + 0.10*0.7 = 0.385
-        assert score == pytest.approx(0.385 / 0.50, abs=0.001)
+        # Current weights: coherence(0.05), helpfulness(0.15), clarity(0.05),
+        #                  completeness(0.10), answer_relevancy(0.15) = total 0.50
+        # weighted_sum = 0.05*0.8 + 0.15*0.7 + 0.05*0.9 + 0.10*0.8 + 0.15*0.7 = 0.375
+        assert score == pytest.approx(0.375 / 0.50, abs=0.001)
 
     def test_partial_metrics(self):
         parsed = {"coherence": 0.8, "helpfulness": None, "clarity": None}
         rag = {"completeness": None, "answer_relevancy": 0.6}
         score = _compute_overall_score(parsed, rag)
-        # answer_relevancy(0.10), coherence(0.10) → total_weight=0.20
-        # weighted_sum = 0.10*0.6 + 0.10*0.8 = 0.14
-        assert score == pytest.approx(0.14 / 0.20, abs=0.001)
+        # answer_relevancy(0.15), coherence(0.05) → total_weight=0.20
+        # weighted_sum = 0.15*0.6 + 0.05*0.8 = 0.13
+        assert score == pytest.approx(0.13 / 0.20, abs=0.001)
 
     def test_no_metrics_falls_back(self):
         parsed = {"overall_score": 0.5}
@@ -204,9 +203,10 @@ class TestComputeOverallScore:
         rag = {"completeness": 0.9, "answer_relevancy": 0.8}
         score = _compute_overall_score(parsed, rag)
         # completeness should use 0.9 (rag) not 0.3 (parsed)
-        # total_weight = 0.15+0.10+0.10+0.10+0.05 = 0.50
+        # weights: completeness(0.10), answer_relevancy(0.15), coherence(0.05),
+        #          helpfulness(0.15), clarity(0.05) = total 0.50
         expected = (
-            0.15 * 0.9 + 0.10 * 0.8 + 0.10 * 0.8 + 0.10 * 0.8 + 0.05 * 0.8
+            0.10 * 0.9 + 0.15 * 0.8 + 0.05 * 0.8 + 0.15 * 0.8 + 0.05 * 0.8
         ) / 0.50
         assert score == pytest.approx(expected, abs=0.001)
 
@@ -245,9 +245,10 @@ class TestComputeOverallScore:
             "context_recall": None,
         }
         score = _compute_overall_score(parsed, rag)
-        # missing hallucination_score and context_recall -> total_weight=0.65
-        # weighted = 0.15 + 0.10 + 0.15*0.5 + 0.10 + 0.10 + 0.05 = 0.575
-        assert score == pytest.approx(0.575 / 0.65, abs=0.001)
+        # available: answer_relevancy(0.15), completeness(0.10), context_precision(0.10),
+        #           helpfulness(0.15), coherence(0.05), clarity(0.05) = total 0.60
+        # weighted = 0.15*1 + 0.10*1 + 0.10*0.5 + 0.15*1 + 0.05*1 + 0.05*1 = 0.55
+        assert score == pytest.approx(0.55 / 0.60, abs=0.001)
 
     def test_hallucination_score_influences_overall(self):
         parsed = {"coherence": 1.0, "helpfulness": 1.0, "clarity": 1.0}
@@ -259,5 +260,6 @@ class TestComputeOverallScore:
             "context_recall": 1.0,
         }
         score = _compute_overall_score(parsed, rag)
-        # All metrics perfect except hallucination_score=0.0 with 0.25 weight.
-        assert score == pytest.approx(0.75, abs=0.001)
+        # missing faithfulness, citation_check → total_weight = 0.85
+        # weighted = 0.15*0 + 0.15*1 + 0.10*1 + 0.10*1 + 0.10*1 + 0.15*1 + 0.05*1 + 0.05*1 = 0.70
+        assert score == pytest.approx(0.70 / 0.85, abs=0.001)
