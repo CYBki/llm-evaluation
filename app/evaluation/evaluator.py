@@ -242,7 +242,14 @@ async def evaluate_trace(
 
         _t0 = _time.perf_counter()
 
-        # Run Stage 1 (rubric CoT) and RAG metrics concurrently
+        # ── Parallel pipeline: Stage 1→2 chain runs alongside RAG metrics ──
+        # Stage 2 only needs Stage 1 output, NOT RAG results.
+        # By not waiting for RAG before starting Stage 2, we save ~10s.
+        #
+        # Timeline:  t=0 ── Stage 1 ── t=5s ── Stage 2 ── t=15s
+        #            t=0 ──────── RAG (6 parallel) ──────── t=25s
+        #            Total = max(15, 25) = 25s  (was 35s)
+
         stage_1_task = asyncio.create_task(
             client.chat_completion(
                 model=settings.stage_1_model,
@@ -255,25 +262,18 @@ async def evaluate_trace(
             compute_rag_metrics(question, answer, contexts, ground_truth)
         )
 
+        # Await Stage 1 first (need it for Stage 2)
         stage_1 = await stage_1_task
         _t1 = _time.perf_counter()
-        rag_results = await rag_metrics_task
-        _t2 = _time.perf_counter()
-
-        logger.info(
-            "Timing — Stage 1: %.1fs | RAG metrics: %.1fs (parallel block: %.1fs)",
-            _t1 - _t0, _t2 - _t0, _t2 - _t0,
-        )
+        logger.info("Timing — Stage 1: %.1fs", _t1 - _t0)
 
         # ── Token accumulator (per-stage for accurate cost) ──
         stage1_prompt_tokens = stage_1.prompt_tokens
         stage1_completion_tokens = stage_1.completion_tokens
 
-        # Stage 2 + RAG metrics both use gpt-5-mini
-        stage2_prompt_tokens = rag_results.get("_prompt_tokens", 0)
-        stage2_completion_tokens = rag_results.get("_completion_tokens", 0)
-
-        # ── Stage 2: structured output with retry loop ──
+        # ── Stage 2: start IMMEDIATELY after Stage 1 (parallel with RAG) ──
+        stage2_prompt_tokens = 0
+        stage2_completion_tokens = 0
         parsed: dict[str, Any] = {}
         raw_responses: list[dict[str, Any]] = []
         last_output = ""
@@ -284,7 +284,7 @@ async def evaluate_trace(
                     model=settings.stage_2_model,
                     system_prompt=STAGE_2_SYSTEM_PROMPT,
                     user_prompt=build_stage_2_user_prompt(stage_1.content),
-                    max_completion_tokens=4096,
+                    max_completion_tokens=2048,
                     json_schema=STAGE_2_JSON_SCHEMA,
                 )
             else:
@@ -301,7 +301,7 @@ async def evaluate_trace(
                     user_prompt=build_stage_2_repair_user_prompt(
                         last_output, stage_1.content, validation_errors
                     ),
-                    max_completion_tokens=4096,
+                    max_completion_tokens=2048,
                     json_schema=STAGE_2_JSON_SCHEMA,
                 )
 
@@ -324,10 +324,22 @@ async def evaluate_trace(
             if fallback.get("overall_score") is not None:
                 parsed = fallback
 
+        _t2 = _time.perf_counter()
+        logger.info("Timing — Stage 2: %.1fs (started right after Stage 1)", _t2 - _t1)
+
+        # ── Now await RAG metrics (may already be done) ──
+        rag_results = await rag_metrics_task
         _t3 = _time.perf_counter()
+
+        # Add RAG token usage
+        stage2_prompt_tokens += rag_results.get("_prompt_tokens", 0)
+        stage2_completion_tokens += rag_results.get("_completion_tokens", 0)
+
         logger.info(
-            "Timing — Stage 2: %.1fs | Total: %.1fs",
-            _t3 - _t2, _t3 - _t0,
+            "Timing — RAG metrics: %.1fs | Pipeline total: %.1fs "
+            "(Stage1: %.1fs + Stage2: %.1fs parallel with RAG)",
+            _t3 - _t0, _t3 - _t0,
+            _t1 - _t0, _t2 - _t1,
         )
 
         is_off_topic_value = _coerce_off_topic_flag(
