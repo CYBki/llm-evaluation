@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from dataclasses import dataclass
 from enum import Enum
@@ -50,7 +51,7 @@ class _CircuitBreaker:
         self._state = _CBState.CLOSED
         self._failure_count = 0
         self._last_failure_time: float = 0.0
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
 
     @property
     def state(self) -> _CBState:
@@ -64,8 +65,10 @@ class _CircuitBreaker:
         """Check breaker state before making an API call.
 
         Raises LLMClientError immediately if the circuit is OPEN.
+        Uses threading.Lock for cross-event-loop safety (Celery workers
+        create a new loop per asyncio.run()).
         """
-        async with self._lock:
+        with self._lock:
             effective = self.state
             if effective == _CBState.OPEN:
                 remaining = self._recovery_timeout - (time.monotonic() - self._last_failure_time)
@@ -78,7 +81,7 @@ class _CircuitBreaker:
 
     async def record_success(self) -> None:
         """Reset failure counter on a successful call."""
-        async with self._lock:
+        with self._lock:
             if self._state != _CBState.CLOSED or self._failure_count > 0:
                 logger.info(
                     "Circuit breaker → CLOSED (was %s, failures reset from %d)",
@@ -89,7 +92,7 @@ class _CircuitBreaker:
 
     async def record_failure(self) -> None:
         """Increment failure counter; trip breaker if threshold reached."""
-        async with self._lock:
+        with self._lock:
             self._failure_count += 1
             self._last_failure_time = time.monotonic()
             if self._failure_count >= self._failure_threshold:
@@ -127,7 +130,8 @@ class LLMResponse:
 
 
 class OpenAILLMClient:
-    _shared_http_client: httpx.AsyncClient | None = None
+    _clients_by_loop: dict[int, httpx.AsyncClient] = {}
+    _clients_lock = threading.Lock()
     _circuit_breaker: _CircuitBreaker = _CircuitBreaker()
 
     def __init__(self) -> None:
@@ -142,17 +146,31 @@ class OpenAILLMClient:
     def is_enabled(self) -> bool:
         return bool(self.api_key)
 
-    # ── Shared connection pool ──────────────────────────────────────────
+    # ── Loop-aware connection pool ──────────────────────────────────────
 
     @classmethod
     def _get_http_client(cls) -> httpx.AsyncClient:
-        """Return a shared httpx.AsyncClient with connection pooling.
+        """Return a httpx.AsyncClient bound to the *current* event loop.
 
-        All LLM calls reuse the same TCP/TLS connections to OpenAI,
-        avoiding per-request handshake overhead (~50-100ms TLS each).
+        Each asyncio.run() creates a new event loop. Celery workers call
+        asyncio.run() per-task, so a single class-level client would be
+        bound to a stale loop on the second task. This method creates one
+        client per loop id, automatically replacing stale/closed ones.
         """
-        if cls._shared_http_client is None or cls._shared_http_client.is_closed:
-            cls._shared_http_client = httpx.AsyncClient(
+        loop = asyncio.get_running_loop()
+        loop_id = id(loop)
+
+        with cls._clients_lock:
+            client = cls._clients_by_loop.get(loop_id)
+            if client is not None and not client.is_closed:
+                return client
+
+            # Clean up stale entries (closed clients from dead loops)
+            stale = [k for k, v in cls._clients_by_loop.items() if v.is_closed]
+            for k in stale:
+                del cls._clients_by_loop[k]
+
+            client = httpx.AsyncClient(
                 timeout=settings.openai_timeout_seconds,
                 limits=httpx.Limits(
                     max_connections=20,
@@ -161,16 +179,23 @@ class OpenAILLMClient:
                 ),
                 http2=True,
             )
-            logger.info("Created shared httpx.AsyncClient (pool: max=20, keepalive=10)")
-        return cls._shared_http_client
+            cls._clients_by_loop[loop_id] = client
+            logger.info(
+                "Created httpx.AsyncClient for loop %d (pool: max=20, keepalive=10)",
+                loop_id,
+            )
+            return client
 
     @classmethod
     async def close_shared_client(cls) -> None:
-        """Gracefully close the shared HTTP client (call on app shutdown)."""
-        if cls._shared_http_client is not None and not cls._shared_http_client.is_closed:
-            await cls._shared_http_client.aclose()
-            cls._shared_http_client = None
-            logger.info("Closed shared httpx.AsyncClient")
+        """Gracefully close the HTTP client bound to the current event loop."""
+        loop = asyncio.get_running_loop()
+        loop_id = id(loop)
+        with cls._clients_lock:
+            client = cls._clients_by_loop.pop(loop_id, None)
+        if client is not None and not client.is_closed:
+            await client.aclose()
+            logger.info("Closed httpx.AsyncClient for loop %d", loop_id)
 
     # ── Retry wrapper ───────────────────────────────────────────────────
 

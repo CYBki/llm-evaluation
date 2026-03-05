@@ -31,22 +31,21 @@ _REQUIRED_FIELDS = _FLOAT_FIELDS + _BOOL_FIELDS + ["reasoning_summary", "disagre
 _MAX_STAGE_2_RETRIES = 3
 
 
-def _compute_cost(prompt_tokens: int, completion_tokens: int) -> float:
-    """Compute total cost in USD across Stage 1 + Stage 2 + RAG metrics.
+def _compute_cost(
+    stage1_prompt_tokens: int,
+    stage1_completion_tokens: int,
+    stage2_prompt_tokens: int,
+    stage2_completion_tokens: int,
+) -> float:
+    """Compute total cost in USD using actual per-stage token counts.
 
-    Stage 1 (gpt-5.2) is 1 call out of ~9 total. The rest use gpt-5-mini.
-    We split tokens by estimated share: ~35% prompt and ~15% completion go to Stage 1.
+    Stage 1 uses gpt-5.2 pricing, Stage 2 + RAG metrics use gpt-5-mini pricing.
     """
-    s1_prompt = prompt_tokens * 0.35
-    s2_prompt = prompt_tokens * 0.65
-    s1_completion = completion_tokens * 0.15
-    s2_completion = completion_tokens * 0.85
-
     cost = (
-        (s1_prompt * settings.stage1_input_price / 1_000_000)
-        + (s1_completion * settings.stage1_output_price / 1_000_000)
-        + (s2_prompt * settings.stage2_input_price / 1_000_000)
-        + (s2_completion * settings.stage2_output_price / 1_000_000)
+        (stage1_prompt_tokens * settings.stage1_input_price / 1_000_000)
+        + (stage1_completion_tokens * settings.stage1_output_price / 1_000_000)
+        + (stage2_prompt_tokens * settings.stage2_input_price / 1_000_000)
+        + (stage2_completion_tokens * settings.stage2_output_price / 1_000_000)
     )
     return round(cost, 6)
 
@@ -234,13 +233,13 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
         stage_1 = await stage_1_task
         rag_results = await rag_metrics_task
 
-        # ── Token accumulator ──
-        total_prompt_tokens = stage_1.prompt_tokens
-        total_completion_tokens = stage_1.completion_tokens
+        # ── Token accumulator (per-stage for accurate cost) ──
+        stage1_prompt_tokens = stage_1.prompt_tokens
+        stage1_completion_tokens = stage_1.completion_tokens
 
-        # Add RAG metrics tokens
-        total_prompt_tokens += rag_results.get("_prompt_tokens", 0)
-        total_completion_tokens += rag_results.get("_completion_tokens", 0)
+        # Stage 2 + RAG metrics both use gpt-5-mini
+        stage2_prompt_tokens = rag_results.get("_prompt_tokens", 0)
+        stage2_completion_tokens = rag_results.get("_completion_tokens", 0)
 
         # ── Stage 2: structured output with retry loop ──
         parsed: dict[str, Any] = {}
@@ -273,9 +272,9 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
             raw_responses.append(s2_resp.raw)
             parsed = _safe_parse_json(s2_resp.content)
 
-            # Accumulate Stage 2 tokens
-            total_prompt_tokens += s2_resp.prompt_tokens
-            total_completion_tokens += s2_resp.completion_tokens
+            # Accumulate Stage 2 tokens (same pricing tier as RAG metrics)
+            stage2_prompt_tokens += s2_resp.prompt_tokens
+            stage2_completion_tokens += s2_resp.completion_tokens
 
             errors = _validate_schema(parsed)
             if not errors:
@@ -324,11 +323,15 @@ async def evaluate_trace(question: str, answer: str, contexts: list[str] | None,
             "completeness_key_points": rag_results.get("completeness_key_points", []),
             "context_precision": rag_results.get("context_precision"),
             "context_recall": rag_results.get("context_recall"),
-            # Token usage & cost
-            "prompt_tokens": total_prompt_tokens,
-            "completion_tokens": total_completion_tokens,
-            "total_tokens": total_prompt_tokens + total_completion_tokens,
-            "cost_usd": _compute_cost(total_prompt_tokens, total_completion_tokens),
+            # Token usage & cost (per-stage for accurate pricing)
+            "prompt_tokens": stage1_prompt_tokens + stage2_prompt_tokens,
+            "completion_tokens": stage1_completion_tokens + stage2_completion_tokens,
+            "total_tokens": (stage1_prompt_tokens + stage2_prompt_tokens
+                            + stage1_completion_tokens + stage2_completion_tokens),
+            "cost_usd": _compute_cost(
+                stage1_prompt_tokens, stage1_completion_tokens,
+                stage2_prompt_tokens, stage2_completion_tokens,
+            ),
         }
     except LLMClientError as exc:
         return {

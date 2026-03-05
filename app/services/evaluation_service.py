@@ -1,12 +1,15 @@
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
+import socket
 import threading
 import time
 from contextlib import contextmanager
 from typing import Generator
+from urllib.parse import urlparse
 from uuid import UUID
 
 import httpx
@@ -19,6 +22,62 @@ from app.models.evaluation import EvaluationResult, StepEvaluationResult
 from app.models.trace import Trace
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# SSRF protection for webhook delivery
+# ---------------------------------------------------------------------------
+_BLOCKED_HOSTNAMES = frozenset({
+    "localhost", "db", "redis", "api", "worker", "pgadmin",
+    "metadata.google.internal",
+})
+
+
+def _is_private_ip(ip_str: str) -> bool:
+    """Return True if the IP is loopback, private, link-local, or reserved."""
+    try:
+        addr = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return True  # unparseable → block
+    return (
+        addr.is_private
+        or addr.is_loopback
+        or addr.is_link_local
+        or addr.is_reserved
+        or addr.is_multicast
+    )
+
+
+def _validate_webhook_target(url: str) -> bool:
+    """Validate that a webhook URL does not point to an internal resource."""
+    parsed = urlparse(url)
+    hostname = parsed.hostname or ""
+
+    # Block non-https (defence-in-depth; schema layer already enforces)
+    if parsed.scheme != "https":
+        logger.warning("SSRF block: non-https scheme in webhook URL %s", url)
+        return False
+
+    # Block known internal Docker/service hostnames
+    if hostname.lower() in _BLOCKED_HOSTNAMES:
+        logger.warning("SSRF block: blocked hostname in webhook URL %s", url)
+        return False
+
+    # Resolve hostname and check all resulting IPs
+    try:
+        addr_infos = socket.getaddrinfo(hostname, parsed.port or 443, proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        logger.warning("SSRF block: DNS resolution failed for webhook URL %s", url)
+        return False
+
+    for family, kind, proto, canonname, sockaddr in addr_infos:
+        ip = sockaddr[0]
+        if _is_private_ip(ip):
+            logger.warning(
+                "SSRF block: webhook URL %s resolves to private IP %s", url, ip,
+            )
+            return False
+
+    return True
 
 
 @contextmanager
@@ -76,10 +135,24 @@ def enqueue_batch_evaluation(trace_ids: list[str]) -> None:
         target=_run_batch,
         args=(list(trace_ids),),
         name="batch-eval",
-        daemon=True,
+        daemon=False,  # non-daemon: allow in-flight evaluations to finish on shutdown
     )
     thread.start()
+    _active_batch_threads.append(thread)
     logger.info("Started background thread for %d trace evaluations", len(trace_ids))
+
+
+# Track non-daemon batch threads for graceful shutdown
+_active_batch_threads: list[threading.Thread] = []
+
+
+def wait_for_batch_threads(timeout: float = 60.0) -> None:
+    """Wait for all running batch evaluation threads to finish (call on shutdown)."""
+    for t in _active_batch_threads:
+        if t.is_alive():
+            logger.info("Waiting for batch thread '%s' to finish (timeout=%.0fs)", t.name, timeout)
+            t.join(timeout=timeout)
+    _active_batch_threads.clear()
 
 
 def _apply_result_to_evaluation(evaluation: EvaluationResult, result: dict) -> None:
@@ -355,6 +428,13 @@ def _deliver_webhook(trace: Trace, evaluation: EvaluationResult) -> None:
     """POST evaluation results to the trace's webhook_url with retries."""
     url = trace.webhook_url
     if not url:
+        return
+
+    # SSRF protection: validate target before making any request
+    if not _validate_webhook_target(url):
+        logger.error(
+            "Webhook delivery blocked (SSRF) for trace %s → %s", trace.id, url,
+        )
         return
 
     payload = _build_webhook_payload(trace, evaluation)

@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "RAG Eval API"
-    database_url: str = "postgresql+psycopg2://postgres:postgres@db:5432/rageval"
+    database_url: str  # REQUIRED — no default, must be set via env/`.env`
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
     openai_timeout_seconds: float = 120.0

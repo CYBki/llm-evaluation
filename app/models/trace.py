@@ -21,7 +21,12 @@ class Trace(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
     webhook_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     user = relationship("User", back_populates="traces")
-    evaluation_result = relationship("EvaluationResult", back_populates="trace", uselist=False)
-    step_evaluation_results = relationship("StepEvaluationResult", back_populates="trace", order_by="StepEvaluationResult.step_index")
+    evaluation_result = relationship("EvaluationResult", back_populates="trace", uselist=False, cascade="all, delete-orphan", passive_deletes=True)
+    step_evaluation_results = relationship("StepEvaluationResult", back_populates="trace", order_by="StepEvaluationResult.step_index", cascade="all, delete-orphan", passive_deletes=True)

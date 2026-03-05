@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.exceptions import DuplicateEmailError
+from app.rate_limit import limiter
 from app.schemas.auth import LoginRequest, LoginResponse, RegisterRequest, RegisterResponse
 from app.services.auth_service import authenticate_user, create_user
 
@@ -19,9 +20,11 @@ router = APIRouter()
         201: {"description": "Kayıt başarılı, API key döner"},
         409: {"description": "E-posta zaten kayıtlı"},
         422: {"description": "Geçersiz istek (validation hatası)"},
+        429: {"description": "Rate limit aşıldı"},
     },
 )
-def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
+@limiter.limit("3/minute")
+def register(request: Request, payload: RegisterRequest, db: Session = Depends(get_db)) -> RegisterResponse:
     """Yeni kullanıcı oluşturur ve API key üretir."""
     try:
         user, api_key = create_user(db, payload.email, payload.password)
@@ -43,9 +46,11 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)) -> Registe
     responses={
         200: {"description": "Giriş başarılı"},
         401: {"description": "Geçersiz kimlik bilgileri"},
+        429: {"description": "Rate limit aşıldı"},
     },
 )
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
+@limiter.limit("5/minute")
+def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
     """Mevcut kullanıcı ile giriş yapar."""
     user = authenticate_user(db, payload.email, payload.password)
     if not user:

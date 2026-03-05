@@ -12,10 +12,10 @@ class EvaluationResult(Base):
     __tablename__ = "evaluation_results"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    trace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("traces.id"), nullable=False, unique=True, index=True)
+    trace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("traces.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
 
     clarity: Mapped[float | None] = mapped_column(Float, nullable=True)
-    specificity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    specificity: Mapped[float | None] = mapped_column(Float, nullable=True)  # DEPRECATED: unused, kept for backward compat
     is_off_topic: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     completeness: Mapped[float | None] = mapped_column(Float, nullable=True)
     coherence: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -67,13 +67,13 @@ class StepEvaluationResult(Base):
     __tablename__ = "step_evaluation_results"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    trace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("traces.id"), nullable=False, index=True)
+    trace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("traces.id", ondelete="CASCADE"), nullable=False, index=True)
     step_index: Mapped[int] = mapped_column(Integer, nullable=False)
     agent_name: Mapped[str] = mapped_column(String(200), nullable=False)
 
     # ── Same metrics as trace-level ──
     clarity: Mapped[float | None] = mapped_column(Float, nullable=True)
-    specificity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    specificity: Mapped[float | None] = mapped_column(Float, nullable=True)  # DEPRECATED: unused, kept for backward compat
     is_off_topic: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     completeness: Mapped[float | None] = mapped_column(Float, nullable=True)
     coherence: Mapped[float | None] = mapped_column(Float, nullable=True)

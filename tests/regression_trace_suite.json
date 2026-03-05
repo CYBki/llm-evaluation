@@ -1,0 +1,135 @@
+[
+  {
+    "id": "rg-001-ideal-grounded",
+    "question": "What is the capital of France?",
+    "answer": "The capital of France is Paris.",
+    "contexts": [
+      "France is a country in Western Europe. Its capital city is Paris."
+    ],
+    "expected": {
+      "hallucination_score_min": 0.9,
+      "is_off_topic": false,
+      "is_deflection": false
+    }
+  },
+  {
+    "id": "rg-002-confirmed-contradiction",
+    "question": "What is the capital of France?",
+    "answer": "The capital of France is Berlin.",
+    "contexts": [
+      "France's capital city is Paris."
+    ],
+    "expected": {
+      "hallucination_score_max": 0.4,
+      "overall_score_max": 0.35,
+      "is_off_topic": false,
+      "is_deflection": false
+    }
+  },
+  {
+    "id": "rg-003-unsupported-claim",
+    "question": "Who created Python?",
+    "answer": "Python was created by Guido van Rossum and first released in 1991. It is the fastest language ever built.",
+    "contexts": [
+      "Python is a high-level language created by Guido van Rossum and first released in 1991."
+    ],
+    "expected": {
+      "hallucination_score_min": 0.5,
+      "hallucination_score_max": 0.8,
+      "is_off_topic": false,
+      "is_deflection": false
+    }
+  },
+  {
+    "id": "rg-004-off-topic",
+    "question": "How do I reset my database password?",
+    "answer": "The Moon landing happened in 1969 and involved Apollo 11.",
+    "contexts": [
+      "To reset the database password, use ALTER USER ... PASSWORD ..."
+    ],
+    "expected": {
+      "answer_relevancy_max": 0.2,
+      "helpfulness_max": 0.2,
+      "is_off_topic": true,
+      "overall_score_max": 0.2
+    }
+  },
+  {
+    "id": "rg-005-deflection",
+    "question": "How can I optimize PostgreSQL index usage?",
+    "answer": "I cannot help with that.",
+    "contexts": [
+      "PostgreSQL supports B-tree, Hash, GIN and BRIN indexes depending on query patterns."
+    ],
+    "expected": {
+      "is_deflection": true,
+      "overall_score_max": 0.2
+    }
+  },
+  {
+    "id": "rg-006-noisy-context",
+    "question": "What is Redis persistence?",
+    "answer": "Redis supports RDB snapshots and AOF append-only persistence.",
+    "contexts": [
+      "Redis persistence options include RDB and AOF.",
+      "The Sahara is the largest hot desert.",
+      "Penguins are flightless birds."
+    ],
+    "expected": {
+      "context_precision_max": 0.6,
+      "hallucination_score_min": 0.8,
+      "is_off_topic": false
+    }
+  },
+  {
+    "id": "rg-007-partial-completeness",
+    "question": "Explain Redis persistence modes and when to use each.",
+    "answer": "Redis has RDB snapshots.",
+    "contexts": [
+      "Redis persistence options are RDB snapshots and AOF append-only files. RDB is compact and fast for backups; AOF is better for durability."
+    ],
+    "expected": {
+      "completeness_max": 0.6,
+      "answer_relevancy_min": 0.7,
+      "is_off_topic": false
+    }
+  },
+  {
+    "id": "rg-008-citation-out-of-range",
+    "question": "What is PostgreSQL?",
+    "answer": "PostgreSQL is an open-source relational database [Source 99].",
+    "contexts": [
+      "PostgreSQL is an open-source relational database management system."
+    ],
+    "expected": {
+      "citation_check": 0.0,
+      "hallucination_score_min": 0.8,
+      "is_off_topic": false
+    }
+  },
+  {
+    "id": "rg-009-paraphrase-summary",
+    "question": "What is Redis used for?",
+    "answer": "Redis is mostly used as a cache. It stores frequently accessed data in memory for fast retrieval.",
+    "contexts": [
+      "Redis is an open-source, in-memory data structure store. Typical use cases include session caching, real-time analytics, pub/sub messaging, leaderboards, and rate limiting. Redis keeps data in RAM, making reads and writes extremely fast."
+    ],
+    "expected": {
+      "hallucination_score_min": 0.7,
+      "is_off_topic": false
+    }
+  },
+  {
+    "id": "rg-010-reasonable-inference",
+    "question": "Is PostgreSQL suitable for large applications?",
+    "answer": "Yes, PostgreSQL is well-suited for large-scale enterprise applications.",
+    "contexts": [
+      "PostgreSQL is a powerful, open source object-relational database system with over 35 years of active development. It is used by many large companies including Apple, Instagram, and Spotify for mission-critical workloads."
+    ],
+    "expected": {
+      "hallucination_score_min": 0.7,
+      "overall_score_min": 0.6,
+      "is_off_topic": false
+    }
+  }
+]

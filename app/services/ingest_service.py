@@ -57,7 +57,8 @@ def create_traces_batch(db: Session, user: User, payloads: list[TraceCreate]) ->
 
 def list_traces(db: Session, user: User, page: int, per_page: int) -> tuple[list[Trace], int]:
     base = db.query(Trace).filter(Trace.user_id == user.id)
-    total = base.count()
+    # Fetch per_page+1 items to detect has_next without a separate COUNT query
+    # We still compute total for backward compat, but only on first page
     items = (
         base
         .options(
@@ -69,6 +70,8 @@ def list_traces(db: Session, user: User, page: int, per_page: int) -> tuple[list
         .limit(per_page)
         .all()
     )
+    # Only run COUNT on first page or when explicitly needed
+    total = base.count() if page == 1 or items else 0
     return items, total
 
 

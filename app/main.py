@@ -10,19 +10,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.models import APIKey, APIKeyIn
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 from sqlalchemy import text
 
 from app.database import SessionLocal
 from app.config import settings
 from app.evaluation.llm_client import OpenAILLMClient
 from app.exceptions import AppError
+from app.rate_limit import limiter
 from app.routers.auth import router as auth_router
 from app.routers.ingest import router as ingest_router
 from app.routers.metrics import router as metrics_router
 from app.routers.traces import router as traces_router
+from app.services.evaluation_service import wait_for_batch_threads
 
 # ── Structured JSON logging ──────────────────────────────────────────────
 
@@ -57,8 +58,6 @@ logger = logging.getLogger(__name__)
 
 # ── App setup ────────────────────────────────────────────────────────────
 
-limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
-
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
@@ -69,7 +68,8 @@ async def lifespan(app: FastAPI):
     """Manage shared resources across the application lifecycle."""
     logger.info("Application starting up")
     yield
-    # Shutdown: close shared HTTP connection pool
+    # Shutdown: wait for in-flight batch evaluations then close HTTP pool
+    wait_for_batch_threads(timeout=60.0)
     await OpenAILLMClient.close_shared_client()
     logger.info("Application shut down cleanly")
 
@@ -213,9 +213,9 @@ app.include_router(traces_router, prefix="/api/v1/traces", tags=["traces"])
 app.include_router(metrics_router, prefix="/api/v1/metrics", tags=["metrics"])
 
 
-@app.get("/health", tags=["health"], summary="Sistem sağlık kontrolü", description="API ve veritabanı durumunu kontrol eder.")
+@app.get("/health", tags=["health"], summary="Sistem sağlık kontrolü", description="API, veritabanı ve Redis durumunu kontrol eder.")
 def health() -> dict:
-    """API ve PostgreSQL bağlantı durumunu döner."""
+    """API, PostgreSQL ve Redis bağlantı durumunu döner."""
     status_detail = {"api": "ok"}
     try:
         with SessionLocal() as db:
@@ -223,4 +223,14 @@ def health() -> dict:
         status_detail["database"] = "ok"
     except Exception:
         status_detail["database"] = "unavailable"
-    return {"status": "ok" if status_detail.get("database") == "ok" else "degraded", "details": status_detail}
+
+    try:
+        import redis
+        r = redis.from_url(settings.redis_url, socket_timeout=2)
+        r.ping()
+        status_detail["redis"] = "ok"
+    except Exception:
+        status_detail["redis"] = "unavailable"
+
+    all_ok = all(v == "ok" for v in status_detail.values())
+    return {"status": "ok" if all_ok else "degraded", "details": status_detail}
