@@ -1,12 +1,15 @@
 import asyncio
 import hashlib
+import hmac
 import json
 import logging
 import threading
+import time
 from contextlib import contextmanager
 from typing import Generator
 from uuid import UUID
 
+import httpx
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -304,6 +307,91 @@ async def _evaluate_trace_async(trace_id: str) -> None:
         db.add(trace)
         db.commit()
         logger.info("Evaluation persisted for trace %s — status=%s", trace_id, trace.status)
+
+        # ── Webhook callback ──
+        if trace.webhook_url:
+            _deliver_webhook(trace, evaluation)
+
+
+def _build_webhook_payload(trace: Trace, evaluation: EvaluationResult) -> dict:
+    """Build the JSON payload sent to the webhook URL."""
+    return {
+        "event": "evaluation.completed",
+        "trace_id": str(trace.id),
+        "status": trace.status,
+        "scores": {
+            "overall_score": evaluation.overall_score,
+            "clarity": evaluation.clarity,
+            "coherence": evaluation.coherence,
+            "helpfulness": evaluation.helpfulness,
+            "completeness": evaluation.completeness,
+            "answer_relevancy": evaluation.answer_relevancy,
+            "faithfulness": evaluation.faithfulness,
+            "hallucination_score": evaluation.hallucination_score,
+            "citation_check": evaluation.citation_check,
+            "context_precision": evaluation.context_precision,
+            "context_recall": evaluation.context_recall,
+        },
+        "flags": {
+            "is_off_topic": evaluation.is_off_topic,
+            "is_deflection": evaluation.is_deflection,
+        },
+        "reasoning_summary": evaluation.reasoning_summary,
+        "cost_usd": evaluation.cost_usd,
+        "total_tokens": evaluation.total_tokens,
+    }
+
+
+def _sign_payload(payload_bytes: bytes) -> str:
+    """HMAC-SHA256 signature for webhook payload verification."""
+    return hmac.new(
+        settings.webhook_secret.encode("utf-8"),
+        payload_bytes,
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _deliver_webhook(trace: Trace, evaluation: EvaluationResult) -> None:
+    """POST evaluation results to the trace's webhook_url with retries."""
+    url = trace.webhook_url
+    if not url:
+        return
+
+    payload = _build_webhook_payload(trace, evaluation)
+    body = json.dumps(payload, default=str).encode("utf-8")
+
+    headers = {"Content-Type": "application/json"}
+    if settings.webhook_secret:
+        headers["X-Signature-SHA256"] = _sign_payload(body)
+
+    max_retries = settings.webhook_max_retries
+    timeout = settings.webhook_timeout_seconds
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                resp = client.post(url, content=body, headers=headers)
+            if resp.status_code < 400:
+                logger.info(
+                    "Webhook delivered for trace %s → %s (status=%d)",
+                    trace.id, url, resp.status_code,
+                )
+                return
+            logger.warning(
+                "Webhook attempt %d/%d failed for trace %s → %s (status=%d)",
+                attempt, max_retries, trace.id, url, resp.status_code,
+            )
+        except Exception:
+            logger.warning(
+                "Webhook attempt %d/%d error for trace %s → %s",
+                attempt, max_retries, trace.id, url,
+                exc_info=True,
+            )
+
+        if attempt < max_retries:
+            time.sleep(2 ** (attempt - 1))  # 1s, 2s backoff
+
+    logger.error("Webhook delivery failed after %d attempts for trace %s", max_retries, trace.id)
 
 
 def _is_successful_result(result: dict) -> bool:

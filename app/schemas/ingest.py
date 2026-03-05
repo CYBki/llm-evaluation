@@ -9,6 +9,7 @@ class TraceCreate(BaseModel):
     contexts: list[str] | None = None
     ground_truth: str | None = None
     metadata: dict | None = None
+    webhook_url: str | None = Field(default=None, max_length=2048, description="URL to receive POST callback when evaluation completes")
 
 
 class TraceIngestResponse(BaseModel):

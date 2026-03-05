@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     # ── CORS ──
     cors_origins: str = ""  # comma-separated origins, e.g. "https://app.example.com,https://admin.example.com"
 
+    # ── Webhook ──
+    webhook_secret: str = ""  # HMAC-SHA256 signing key for webhook payloads
+    webhook_timeout_seconds: float = 10.0
+    webhook_max_retries: int = 3
+
     # ── Model pricing (per 1M tokens, USD) ──
     stage1_input_price: float = 2.50   # gpt-5.2 input
     stage1_output_price: float = 10.00  # gpt-5.2 output

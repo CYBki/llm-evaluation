@@ -14,6 +14,7 @@ def create_trace(db: Session, user: User, payload: TraceCreate) -> Trace:
         contexts=payload.contexts,
         ground_truth=payload.ground_truth,
         meta=payload.metadata,
+        webhook_url=payload.webhook_url,
         status="pending",
     )
     db.add(trace)
@@ -36,6 +37,7 @@ def create_traces_batch(db: Session, user: User, payloads: list[TraceCreate]) ->
             contexts=payload.contexts,
             ground_truth=payload.ground_truth,
             meta=payload.metadata,
+            webhook_url=payload.webhook_url,
             status="pending",
         )
         db.add(trace)

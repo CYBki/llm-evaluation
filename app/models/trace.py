@@ -19,6 +19,7 @@ class Trace(Base):
     ground_truth: Mapped[str | None] = mapped_column(Text, nullable=True)
     meta: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
+    webhook_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
 
     user = relationship("User", back_populates="traces")
