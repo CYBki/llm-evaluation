@@ -267,7 +267,7 @@ async def compute_citation_check(
             model=settings.rag_metrics_model,
             system_prompt=CITATION_CHECK_SYSTEM_PROMPT,
             user_prompt=build_citation_check_user_prompt(answer, contexts),
-            max_completion_tokens=1024,
+            max_completion_tokens=1536,
             json_schema=CITATION_CHECK_JSON_SCHEMA,
         )
 
@@ -315,7 +315,7 @@ async def compute_completeness(
             model=settings.rag_metrics_model,
             system_prompt=COMPLETENESS_SYSTEM_PROMPT,
             user_prompt=build_completeness_user_prompt(question, answer, contexts),
-            max_completion_tokens=1024,
+            max_completion_tokens=2048,
             json_schema=COMPLETENESS_JSON_SCHEMA,
         )
 
