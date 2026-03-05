@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.models.trace import Trace
 from app.models.user import User
 from app.schemas.ingest import TraceCreate
-from app.services.evaluation_service import enqueue_trace_evaluation
+from app.services.evaluation_service import enqueue_batch_evaluation, enqueue_trace_evaluation
 
 
 def create_trace(db: Session, user: User, payload: TraceCreate) -> Trace:
@@ -45,8 +45,10 @@ def create_traces_batch(db: Session, user: User, payloads: list[TraceCreate]) ->
 
     for trace in traces:
         db.refresh(trace)
-        enqueue_trace_evaluation(trace.id)
-        db.refresh(trace)
+
+    # Enqueue all evaluations at once (parallel in async mode,
+    # background thread in sync mode)
+    enqueue_batch_evaluation([str(t.id) for t in traces])
 
     return traces
 

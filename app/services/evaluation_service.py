@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 from contextlib import contextmanager
 from typing import Generator
 from uuid import UUID
@@ -36,6 +37,44 @@ def enqueue_trace_evaluation(trace_id: UUID | str) -> None:
         return
 
     evaluate_trace_and_persist(trace_id_str)
+
+
+def enqueue_batch_evaluation(trace_ids: list[str]) -> None:
+    """Enqueue multiple trace evaluations efficiently.
+
+    - async mode: Celery group for true parallelism across workers
+    - sync mode: background thread to avoid blocking the HTTP response
+    """
+    if not trace_ids:
+        return
+
+    if settings.evaluation_mode.lower() == "async":
+        from celery import group
+
+        from app.tasks.evaluation_tasks import evaluate_trace_task
+
+        job = group(evaluate_trace_task.s(tid) for tid in trace_ids)
+        job.apply_async()
+        logger.info("Enqueued Celery group for %d traces", len(trace_ids))
+        return
+
+    # Sync mode: run evaluations in a background thread so the HTTP
+    # response returns immediately instead of blocking for minutes.
+    def _run_batch(ids: list[str]) -> None:
+        for tid in ids:
+            try:
+                evaluate_trace_and_persist(tid)
+            except Exception:
+                logger.exception("Background batch eval failed for trace %s", tid)
+
+    thread = threading.Thread(
+        target=_run_batch,
+        args=(list(trace_ids),),
+        name="batch-eval",
+        daemon=True,
+    )
+    thread.start()
+    logger.info("Started background thread for %d trace evaluations", len(trace_ids))
 
 
 def _apply_result_to_evaluation(evaluation: EvaluationResult, result: dict) -> None:
