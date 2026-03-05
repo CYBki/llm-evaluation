@@ -70,6 +70,9 @@ class EvaluationResult(Base):
     total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True)
 
+    # ── Evaluation duration ──
+    evaluation_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     evaluated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
     )

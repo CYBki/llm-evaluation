@@ -134,6 +134,7 @@ def _to_trace_response(trace: Trace) -> TraceResponse:
             reasoning_summary=evaluation.reasoning_summary,
             details=_build_details(evaluation),
             evaluation_commentary=_build_commentary(evaluation),
+            evaluation_duration_ms=evaluation.evaluation_duration_ms,
             pipeline_score=evaluation.pipeline_score,
             pipeline_verdict=get_verdict("overall_score", evaluation.pipeline_score),
             step_evaluations=_build_step_evaluations(trace),
@@ -148,6 +149,7 @@ def _to_trace_response(trace: Trace) -> TraceResponse:
             reasoning_summary=evaluation.reasoning_summary,
             details=_build_details(evaluation),
             evaluation_commentary=_build_commentary(evaluation),
+            evaluation_duration_ms=evaluation.evaluation_duration_ms,
         )
     else:
         eval_response = None
@@ -178,6 +180,7 @@ def _to_trace_detail_response(trace: Trace) -> TraceDetailResponse:
             reasoning_summary=evaluation.reasoning_summary,
             details=_build_details(evaluation),
             evaluation_commentary=_build_commentary(evaluation),
+            evaluation_duration_ms=evaluation.evaluation_duration_ms,
             stage_1_reasoning=evaluation.stage_1_reasoning,
             disagreement_claims=evaluation.disagreement_claims,
             model_used=evaluation.model_used,
@@ -197,6 +200,7 @@ def _to_trace_detail_response(trace: Trace) -> TraceDetailResponse:
             reasoning_summary=evaluation.reasoning_summary,
             details=_build_details(evaluation),
             evaluation_commentary=_build_commentary(evaluation),
+            evaluation_duration_ms=evaluation.evaluation_duration_ms,
             stage_1_reasoning=evaluation.stage_1_reasoning,
             disagreement_claims=evaluation.disagreement_claims,
             model_used=evaluation.model_used,

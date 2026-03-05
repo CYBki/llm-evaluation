@@ -123,6 +123,7 @@ class EvaluationResponse(BaseModel):
     reasoning_summary: str | None = None
     details: DetailsResponse
     evaluation_commentary: str | None = None
+    evaluation_duration_ms: int | None = None
 
 
 class EvaluationDetailResponse(EvaluationResponse):

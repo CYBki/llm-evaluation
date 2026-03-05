@@ -276,6 +276,7 @@ def _copy_evaluation(source: EvaluationResult, target: EvaluationResult) -> None
         "completion_tokens",
         "total_tokens",
         "cost_usd",
+        "evaluation_duration_ms",
     ):
         setattr(target, col, getattr(source, col))
 
@@ -341,6 +342,7 @@ async def _evaluate_trace_async(trace_id: str) -> None:
             return
 
         # ── 1. Trace-level evaluation (final answer) — cache miss ──
+        eval_start = time.perf_counter()
         try:
             result = await evaluate_trace(
                 trace.question, trace.answer, trace.contexts, trace.ground_truth
@@ -351,8 +353,10 @@ async def _evaluate_trace_async(trace_id: str) -> None:
             db.add(trace)
             db.commit()
             return
+        eval_duration_ms = round((time.perf_counter() - eval_start) * 1000)
 
         _apply_result_to_evaluation(evaluation, result)
+        evaluation.evaluation_duration_ms = eval_duration_ms
         evaluation.content_hash = content_hash
 
         # ── 2. Step-level evaluation (if multi-agent) — PARALLEL ──
@@ -448,6 +452,7 @@ def _build_webhook_payload(trace: Trace, evaluation: EvaluationResult) -> dict:
         "event": "evaluation.completed",
         "trace_id": str(trace.id),
         "status": trace.status,
+        "evaluation_duration_ms": evaluation.evaluation_duration_ms,
         "scores": {
             "overall_score": evaluation.overall_score,
             "clarity": evaluation.clarity,
