@@ -201,7 +201,9 @@ def build_stage_2_repair_user_prompt(
     if validation_errors:
         error_block = f"\nVALIDATION ERRORS:\n{validation_errors}\n"
     # Truncate long reasoning to prevent input bloat on retries
-    truncated_reasoning = stage_1_reasoning[:4000] if len(stage_1_reasoning) > 4000 else stage_1_reasoning
+    truncated_reasoning = (
+        stage_1_reasoning[:4000] if len(stage_1_reasoning) > 4000 else stage_1_reasoning
+    )
     return (
         "Below is the first conversion attempt and the original reasoning.\n"
         "The conversion attempt is invalid. Fix it and return a single valid JSON object.\n"
@@ -312,6 +314,7 @@ def build_hallucination_user_prompt(answer: str, contexts: list[str]) -> str:
         "Extract and evaluate factual claims with disagreement_type labels."
     )
 
+
 # Keep old function names as aliases
 build_hallucination_stage_1_user_prompt = build_hallucination_user_prompt
 
@@ -324,7 +327,6 @@ def build_hallucination_stage_2_user_prompt(stage_1_reasoning: str) -> str:
         "REASONING:\n"
         f"{stage_1_reasoning}"
     )
-
 
 
 # ── RAG Metrics: Citation Check ─────────────────────────────────────────

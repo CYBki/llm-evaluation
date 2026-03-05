@@ -338,8 +338,10 @@ async def evaluate_trace(
         logger.info(
             "Timing — RAG metrics: %.1fs | Pipeline total: %.1fs "
             "(Stage1: %.1fs + Stage2: %.1fs parallel with RAG)",
-            _t3 - _t0, _t3 - _t0,
-            _t1 - _t0, _t2 - _t1,
+            _t3 - _t0,
+            _t3 - _t0,
+            _t1 - _t0,
+            _t2 - _t1,
         )
 
         is_off_topic_value = _coerce_off_topic_flag(

@@ -478,7 +478,9 @@ async def compute_rag_metrics(
     async def _timed(name, coro):
         t = _time.perf_counter()
         result = await coro
-        logger.info("RAG metric '%s' completed in %.1fs", name, _time.perf_counter() - t)
+        logger.info(
+            "RAG metric '%s' completed in %.1fs", name, _time.perf_counter() - t
+        )
         return result
 
     relevancy_task = asyncio.create_task(
@@ -497,7 +499,9 @@ async def compute_rag_metrics(
         _timed("ctx_precision", compute_context_precision(client, question, ctx))
     )
     ctx_recall_task = asyncio.create_task(
-        _timed("ctx_recall", compute_context_recall(client, question, ctx, ground_truth))
+        _timed(
+            "ctx_recall", compute_context_recall(client, question, ctx, ground_truth)
+        )
     )
 
     relevancy = await relevancy_task

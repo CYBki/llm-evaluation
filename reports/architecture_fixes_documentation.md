@@ -1,6 +1,6 @@
 # RAG Eval API — Mimari İyileştirmeler Dokümantasyonu
 
-> Bu dokümanda yapılan **47 düzeltmenin** (20 orijinal + 27 yeni mimari review) tamamı, sıfırdan öğrenen birine anlatır gibi açıklanmıştır. Her madde basit bir benzetmeyle başlar, teknik detaya iner ve kodda ne yapıldığını gösterir.
+> Bu dokümanda yapılan **53 düzeltme ve optimizasyonun** (20 orijinal + 27 mimari review + 6 performans optimizasyonu) tamamı, sıfırdan öğrenen birine anlatır gibi açıklanmıştır. Her madde basit bir benzetmeyle başlar, teknik detaya iner ve kodda ne yapıldığını gösterir.
 
 ---
 
@@ -54,6 +54,16 @@
 | 39 | [Health Endpoint Redis Kontrolü](#madde-39) |
 | 40 | [Trace updated_at Kolonu](#madde-40) |
 | 41-47 | [Kalan Low-Priority İyileştirmeler](#madde-41-47) |
+
+### Performans Optimizasyonları (Phase 1-3)
+| # | Başlık |
+|---|--------|
+| 48 | [Token Limit Optimizasyonu (144s → 53s)](#madde-48) |
+| 49 | [Hallucination Single-Call Birleştirme (53s → 35s)](#madde-49) |
+| 50 | [Stage 2 Pipeline Restructure — RAG'den Bağımsızlaştırma (35s → 16.8s)](#madde-50) |
+| 51 | [Completeness / Citation Token Limit Fix](#madde-51) |
+| 52 | [evaluation_duration_ms Feature](#madde-52) |
+| 53 | [Pipeline Timing Instrumentation](#madde-53) |
 
 ---
 
@@ -1448,4 +1458,375 @@ Aynı trace'in iki kez ingest edilmesini engellemek için client-generated idemp
 | 38 | Operasyon | Redis healthcheck yok | Docker healthcheck + dependency | ✅ |
 | 39 | Operasyon | Health'te Redis yok | health endpoint Redis PING | ✅ |
 | 40 | Operasyon | updated_at yok | onupdate ile otomatik | ✅ |
-| 41-47 | Low | Çeşitli iyileştirmeler | Gelecek iterasyona planlandı | 📋 |
+| 41-47 | Low | Çeşitli iyileştirmeler | Gelecek iterasyona planlandı | 📋 || **48** | **Performans** | Token limit çok yüksek (16384) | max_completion_tokens 4096 + prompt kısaltma | ✅ |
+| **49** | **Performans** | Hallucination 2 aşamalı (2 LLM çağrısı) | Single-call structured output birleştirme | ✅ |
+| **50** | **Performans** | Stage 2, RAG'i gereksiz yere bekliyor | Pipeline restructure — Stage 2 RAG'den bağımsız | ✅ |
+| **51** | **Doğruluk** | Completeness/citation hep null | Token limit artırma (1024→2048/1536) | ✅ |
+| **52** | **Operasyon** | Evaluation süresi takibi yok | evaluation_duration_ms (DB + webhook + API) | ✅ |
+| **53** | **Operasyon** | Stage/metric timing görünürlüğü yok | Pipeline timing instrumentation (loglar) | ✅ |
+
+---
+
+## PERFORMANS OPTİMİZASYONLARI (Phase 1-3)
+
+> Bu bölümde evaluation pipeline'ının **144 saniyeden 16.8 saniyeye** düşürülme sürecindeki 6 iyileştirme detaylı açıklanmıştır.
+
+---
+
+<details id="madde-48">
+<summary><strong>✅ Madde 48 — Token Limit Optimizasyonu + Prompt Kısaltma (144s → 53s)</strong></summary>
+
+### Basit Anlatım
+Bir öğrenciye "sınav kağıdı en fazla 100 sayfa olabilir" dersen, bazıları gerçekten 100 sayfa yazar — gereksiz tekrarlar, dolgu cümlelerle. Ama "en fazla 10 sayfa" dersen, özüne odaklanır. LLM'ler de aynı: token limiti ne kadar yüksekse, o kadar genişletir.
+
+### Sorun
+Tüm LLM çağrılarında `max_completion_tokens=16384` kullanılıyordu. LLM'ler gereksiz yere uzun çıktı üretiyordu:
+- Stage 1 reasoning: ~5000 token (gereksiz tekrarlar)
+- RAG metrikleri: Her biri ~2000 token
+
+Bu hem **daha yavaş** (daha fazla token üretmek = daha fazla zaman) hem de **daha pahalı** idi.
+
+### Ne Yapıldı
+
+1. **Token limitleri düşürüldü:**
+   - Stage 1: `16384 → 4096`
+   - Stage 2: `16384 → 4096`
+   - RAG metrikleri: `16384 → 2048`
+
+2. **Stage 1 prompt'una conciseness talimatı eklendi:**
+```python
+STAGE_1_SYSTEM_PROMPT = """
+...
+Keep your total response under 1500 words.
+"""
+```
+
+3. **Stage 2 repair prompt truncation:**
+```python
+# Retry'larda Stage 1 reasoning'i 4000 karaktere kısaltıldı
+truncated_reasoning = stage_1_reasoning[:4000] if len(stage_1_reasoning) > 4000 else stage_1_reasoning
+```
+
+### Neden İşe Yaradı
+- Daha az token = daha az üretim süresi (LLM'ler token-by-token üretir)
+- Daha kısa Stage 1 çıktısı = Stage 2'nin input'u da kısalır = Stage 2 daha hızlı
+- Prompt kısaltma talimatı ile LLM gereksiz tekrardan kaçınır
+
+### Dosyalar
+- `app/evaluation/evaluator.py` — Stage 1/2 token limitleri
+- `app/evaluation/rag_metrics.py` — RAG metrik token limitleri
+- `app/evaluation/prompts.py` — "under 1500 words" talimatı, repair truncation
+
+### Etki
+**144s → 53s** (~63% iyileşme)
+
+</details>
+
+---
+
+<details id="madde-49">
+<summary><strong>✅ Madde 49 — Hallucination Single-Call Birleştirme (53s → 35s)</strong></summary>
+
+### Basit Anlatım
+Bir avukat, tanıklık alırken önce serbest konuşturur (Stage 1), sonra bir katibin bu konuşmayı resmi tutanağa dönüştürmesini bekler (Stage 2). İki ayrı adım. Ya avukat doğrudan tutanak formatında konuşma alabilseydi? Tek adım, yarı süre.
+
+### Sorun
+Hallucination metriği kendi içinde iki ayrı LLM çağrısından oluşuyordu:
+
+```
+Hallucination Stage 1 (serbest metin):
+  "Cevaptaki iddiaları çıkar, context ile karşılaştır, muhakemeni yaz"
+  → ~8s
+
+Hallucination Stage 2 (JSON dönüşümü):
+  "Yukarıdaki muhakemeyi JSON'a çevir"
+  → ~5s
+
+Toplam: ~13s (sıralı)
+```
+
+Hallucination zaten RAG metrikleri arasındaki **darboğazdı** — en uzun süren metrik. İki LLM çağrısı bunu daha da yavaşlatıyordu.
+
+### Ne Yapıldı
+OpenAI'ın **Structured Outputs** (`strict: true` JSON schema) özelliği kullanılarak iki aşama tek bir çağrıya birleştirildi:
+
+```python
+# ESKİ: 2 çağrı
+resp1 = await client.chat_completion(  # Stage 1: serbest metin reasoning
+    system_prompt=HALLUCINATION_STAGE_1_SYSTEM_PROMPT, ...
+)
+resp2 = await client.chat_completion(  # Stage 2: JSON dönüşümü
+    system_prompt=HALLUCINATION_STAGE_2_SYSTEM_PROMPT,
+    user_prompt=resp1.content, ...
+)
+
+# YENİ: 1 çağrı — hem düşün, hem JSON döndür
+resp = await client.chat_completion(
+    system_prompt=HALLUCINATION_SYSTEM_PROMPT,
+    user_prompt=build_hallucination_user_prompt(answer, contexts),
+    max_completion_tokens=4096,
+    json_schema=HALLUCINATION_JSON_SCHEMA,  # strict schema zorunluluğu
+)
+```
+
+### Neden Eski Yöntemde 2 Çağrı Gerekiyordu?
+Structured Outputs öncesinde LLM'den güvenilir JSON almak zordu — schema hataları, eksik parantezler, format bozuklukları. "Önce düşün, sonra başka bir LLM JSON'a çevirsin" yaklaşımı gerekiyordu. `strict: true` ile API seviyesinde JSON schema uyumu garanti ediliyor — ayrı bir dönüştürücüye gerek kalmadı.
+
+### Neden Ana Pipeline Stage 1→2 Birleştirilmedi?
+Ana pipeline'da Stage 1 **gpt-5.2** (güçlü, pahalı) derin muhakeme için, Stage 2 **gpt-5-mini** (hızlı, ucuz) basit JSON dönüşümü için kullanılıyor. Farklı modeller → birleştirilemez.
+
+Hallucination'da ise zaten ikisi de **gpt-5-mini** idi — birleştirmek doğal.
+
+### Dosyalar
+- `app/evaluation/rag_metrics.py` — `compute_hallucination_rubric()` tek çağrı
+- `app/evaluation/prompts.py` — `HALLUCINATION_SYSTEM_PROMPT`, `HALLUCINATION_JSON_SCHEMA`
+
+### Etki
+**53s → 26-35s** (~45% iyileşme, çünkü hallucination darboğazdı)
+
+</details>
+
+---
+
+<details id="madde-50">
+<summary><strong>✅ Madde 50 — Stage 2 Pipeline Restructure (35s → 16.8s)</strong></summary>
+
+### Basit Anlatım
+Bir restoranda yemek hazırlanırken: tatlı (Stage 2) sadece ana yemeğin (Stage 1) pişmesini beklemeli — garnitürlerin (RAG) hazır olmasını beklemeye gerek yok. Ama eski kodda tatlı hazırlığı, garnitürler bitene kadar başlamıyordu. Neden? Çünkü yanlışlıkla "hepsi hazır olunca başla" denilmişti.
+
+### Sorun
+Pipeline'da Stage 2, Stage 1 çıktısını JSON'a çevirir — **RAG sonuçlarına ihtiyacı yoktur.** Ama eski kodda:
+
+```python
+# ESKİ: Stage 2, RAG'in bitmesini bekliyordu
+stage_1_task = asyncio.create_task(...)
+rag_metrics_task = asyncio.create_task(...)
+
+stage_1 = await stage_1_task        # 5s
+rag_results = await rag_metrics_task  # 25s bekle! ❌
+# Stage 2 ancak burada başlıyordu — RAG bittikten sonra
+s2_resp = await client.chat_completion(...)  # 10s
+# Toplam: 25 + 10 = 35s
+```
+
+### Ne Yapıldı
+Stage 2, Stage 1 biter bitmez başlatıldı — RAG'i beklemeden:
+
+```python
+# YENİ: Stage 2, RAG'den bağımsız
+stage_1_task = asyncio.create_task(...)    # t=0
+rag_metrics_task = asyncio.create_task(...)  # t=0
+
+stage_1 = await stage_1_task  # t=5s — Stage 1 bitti
+
+# Stage 2 HEMEN başla (RAG hâlâ çalışıyor!)
+s2_resp = await client.chat_completion(
+    user_prompt=build_stage_2_user_prompt(stage_1.content),  # sadece Stage 1 çıktısı
+    ...
+)  # t=15s — Stage 2 bitti
+
+# ŞİMDİ RAG'i bekle (muhtemelen çoktan bitmiştir)
+rag_results = await rag_metrics_task  # t=25s
+# Toplam: max(15, 25) = 25s
+```
+
+**Ayrıca:** Stage 2 token limiti `4096 → 2048` düşürüldü (çıktı küçük bir JSON, 4096 gereksiz).
+
+### Timeline Karşılaştırma
+```
+ESKİ:
+  t=0  → Stage 1 (5s) + RAG (25s)  ← paralel
+  t=25 → RAG bitti → Stage 2 (10s)
+  t=35 → Bitti ✓                    = 35s
+
+YENİ:
+  t=0  → Stage 1 (5s) + RAG (25s)  ← paralel
+  t=5  → Stage 1 bitti → Stage 2 (10s)  ← RAG'i beklemiyor!
+  t=15 → Stage 2 bitti (RAG hâlâ çalışıyor...)
+  t=25 → RAG bitti ✓               = max(15, 25) = 25s
+```
+
+### Dosyalar
+- `app/evaluation/evaluator.py` — `evaluate_trace()` pipeline restructure
+
+### Etki
+**35s → 21-28s lokal, 16.8s production sunucuda** (~52% iyileşme)
+
+</details>
+
+---
+
+<details id="madde-51">
+<summary><strong>✅ Madde 51 — Completeness / Citation Token Limit Fix</strong></summary>
+
+### Basit Anlatım
+Bir öğrenciye "cevabını 1 sayfaya sığdır" dersen ama aslında 2 sayfa gerekiyorsa, sınav kağıdını yarım bırakır. LLM'ler de aynı: çıktı token limitine ulaşırsa, `finish_reason=length` ile keser ve structured output'ta `content=null` döner.
+
+### Sorun
+Completeness metriği hep `null` dönüyordu. Sebep:
+- `max_completion_tokens=1024` idi
+- Completeness çıktısı (key points + evidence) 1024 token'a sığmıyordu
+- OpenAI Structured Outputs'ta truncate olursa `content=null` döner (kısmi JSON üretemez)
+
+### Ne Yapıldı
+```python
+# Completeness: 1024 → 2048
+resp = await client.chat_completion(
+    model=settings.rag_metrics_model,
+    system_prompt=COMPLETENESS_SYSTEM_PROMPT,
+    max_completion_tokens=2048,  # was 1024
+    ...
+)
+
+# Citation check: 1024 → 1536
+resp = await client.chat_completion(
+    model=settings.rag_metrics_model,
+    system_prompt=CITATION_CHECK_SYSTEM_PROMPT,
+    max_completion_tokens=1536,  # was 1024
+    ...
+)
+```
+
+**Hallucination** için de 4096→2048 ve 4096→3072 denendi, ama ikisi de bazı durumlarda null döndürdü. 4096'da sabitlendi (güvenli minimum).
+
+### Dosyalar
+- `app/evaluation/rag_metrics.py` — `compute_completeness()`, `compute_citation_check()`
+
+### Etki
+Completeness ve citation_check metrikleri artık güvenilir sonuç döndürüyor (null yerine gerçek skorlar).
+
+</details>
+
+---
+
+<details id="madde-52">
+<summary><strong>✅ Madde 52 — evaluation_duration_ms Feature</strong></summary>
+
+### Basit Anlatım
+Bir doktor muayenesinin "ne kadar sürdüğünü" kaydetmesi gibid — hem performans takibi hem de SLA uyumu için gerekli.
+
+### Sorun
+Evaluation'ın ne kadar sürdüğü hiçbir yerde kaydedilmiyordu. Production'da yavaşlama olduğunda fark etmek imkansızdı.
+
+### Ne Yapıldı
+
+1. **DB modeli — yeni kolon:**
+```python
+# app/models/evaluation.py
+evaluation_duration_ms = Column(Integer, nullable=True)
+```
+
+2. **Migration (0012):**
+```python
+# alembic/versions/0012_add_evaluation_duration_ms.py
+op.add_column('evaluation_results', sa.Column('evaluation_duration_ms', sa.Integer()))
+```
+
+3. **Service — zamanlama:**
+```python
+# app/services/evaluation_service.py
+eval_start = time.perf_counter()
+result = await evaluate_trace(...)
+eval_duration_ms = round((time.perf_counter() - eval_start) * 1000)
+evaluation.evaluation_duration_ms = eval_duration_ms
+```
+
+4. **API response + Webhook payload:**
+```json
+{
+  "event": "evaluation.completed",
+  "evaluation_duration_ms": 16800,
+  "scores": { ... }
+}
+```
+
+### Dosyalar
+- `app/models/evaluation.py` — DB kolon
+- `alembic/versions/0012_add_evaluation_duration_ms.py` — Migration
+- `app/services/evaluation_service.py` — Zamanlama kodu
+- `app/schemas/ingest.py` — API response schema
+- `app/routers/traces.py` — GET endpoint'leri
+
+### Etki
+Her evaluation'ın milisaniye cinsinden süresi kaydedilip API ve webhook'ta görülebiliyor.
+
+</details>
+
+---
+
+<details id="madde-53">
+<summary><strong>✅ Madde 53 — Pipeline Timing Instrumentation</strong></summary>
+
+### Basit Anlatım
+Bir arabanın dashboard'unda sadece toplam hız göstermek yetmez — motor devri, yakıt basıncı, turbo boost gibi alt metrikleri de görmek istersin. Aynı şekilde evaluation pipeline'ında hangi aşamanın ne kadar sürdüğünü görmek gerekiyordu.
+
+### Sorun
+Sadece toplam süre biliniyordu, darboğazın hangi aşamada olduğu belirsizdi. "Neden 35 saniye?" sorusuna cevap veremiyorduk.
+
+### Ne Yapıldı
+
+1. **Evaluator.py — Stage-level timing:**
+```python
+_t0 = _time.perf_counter()
+
+stage_1 = await stage_1_task
+_t1 = _time.perf_counter()
+logger.info("Timing — Stage 1: %.1fs", _t1 - _t0)
+
+# Stage 2 bitti
+_t2 = _time.perf_counter()
+logger.info("Timing — Stage 2: %.1fs", _t2 - _t1)
+
+# RAG bitti
+rag_results = await rag_metrics_task
+_t3 = _time.perf_counter()
+logger.info("Timing — RAG metrics: %.1fs | Pipeline total: %.1fs", _t3 - _t0, _t3 - _t0)
+```
+
+2. **rag_metrics.py — Per-metric timing:**
+```python
+async def _timed(name, coro):
+    t = _time.perf_counter()
+    result = await coro
+    logger.info("RAG metric '%s' completed in %.1fs", name, _time.perf_counter() - t)
+    return result
+
+relevancy_task = asyncio.create_task(_timed("relevancy", compute_answer_relevancy(...)))
+hallucination_task = asyncio.create_task(_timed("hallucination", compute_hallucination_rubric(...)))
+# ... 6 metrik
+```
+
+### Örnek Log Çıktısı
+```
+Timing — Stage 1: 5.2s
+RAG metric 'relevancy' completed in 3.1s
+RAG metric 'citation' completed in 2.8s
+RAG metric 'ctx_precision' completed in 3.4s
+RAG metric 'ctx_recall' completed in 3.9s
+RAG metric 'completeness' completed in 4.2s
+RAG metric 'hallucination' completed in 12.1s
+Timing — Stage 2: 4.8s (started right after Stage 1)
+Timing — RAG metrics: 12.3s | Pipeline total: 12.3s
+```
+
+Bu loglar sayesinde hallucination'ın darboğaz olduğu tespit edildi ve optimizasyon öncelikleri belirlendi.
+
+### Dosyalar
+- `app/evaluation/evaluator.py` — Stage-level timing logları
+- `app/evaluation/rag_metrics.py` — Per-metric `_timed()` wrapper
+
+### Etki
+Tüm pipeline darboğazları artık loglardan görülebiliyor.
+
+</details>
+
+---
+
+## TOPLAM İYİLEŞME ÖZETİ
+
+| Phase | Değişiklik | Önceki Süre | Sonraki Süre | İyileşme |
+|-------|-----------|-------------|-------------|----------|
+| **Phase 1** | Token limit + prompt kısaltma | 144s | 53s | -63% |
+| **Phase 2** | Hallucination single-call | 53s | 26-35s | -45% |
+| **Phase 3** | Pipeline restructure + Stage 2 token | 35s | 16.8s (prod) | -52% |
+| **Toplam** | | **144s** | **16.8s** | **-88%** |

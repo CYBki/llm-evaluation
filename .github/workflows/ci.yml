@@ -25,7 +25,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install ruff
+          pip install ruff==0.15.4
 
       - name: Ruff lint
         run: ruff check app/ tests/ --output-format=github
