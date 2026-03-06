@@ -64,6 +64,11 @@ def ingest_batch(
     db: Session = Depends(get_db),
 ) -> TraceBatchIngestResponse:
     """Toplu trace alır ve her birini bağımsız olarak değerlendirir."""
+    # Propagate batch-level webhook_url to traces that don't have their own
+    if payload.webhook_url:
+        for trace in payload.traces:
+            if trace.webhook_url is None:
+                trace.webhook_url = payload.webhook_url
     traces = create_traces_batch(db, current_user, payload.traces)
     items = [
         TraceIngestResponse(
