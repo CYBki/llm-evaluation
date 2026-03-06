@@ -83,17 +83,11 @@ class TestCoerceTypes:
         result = _coerce_types({"is_deflection": "evet"})
         assert result["is_deflection"] is True
 
-    def test_non_list_disagreement(self):
-        result = _coerce_types({"disagreement_claims": "not a list"})
-        assert result["disagreement_claims"] == []
-
 
 class TestValidateSchema:
     def test_valid(self):
         data = {
             "clarity": 0.8,
-            "specificity": 0.7,
-            "completeness": 0.6,
             "coherence": 0.7,
             "helpfulness": 0.8,
             "overall_score": 0.7,
@@ -101,7 +95,6 @@ class TestValidateSchema:
             "is_off_topic": False,
             "is_deflection": False,
             "reasoning_summary": "Good.",
-            "disagreement_claims": [],
         }
         assert _validate_schema(data) == []
 
@@ -113,8 +106,6 @@ class TestValidateSchema:
     def test_wrong_type(self):
         data = {
             "clarity": "not_a_number",
-            "specificity": 0.7,
-            "completeness": 0.6,
             "coherence": 0.7,
             "helpfulness": 0.8,
             "overall_score": 0.7,
@@ -122,7 +113,6 @@ class TestValidateSchema:
             "is_off_topic": False,
             "is_deflection": False,
             "reasoning_summary": "Test.",
-            "disagreement_claims": [],
         }
         errors = _validate_schema(data)
         assert any("number" in e for e in errors)
@@ -132,8 +122,6 @@ class TestRegexExtractScores:
     def test_extract_from_text(self):
         text = """
         CLARITY: 0.8
-        SPECIFICITY: 0.7
-        COMPLETENESS: 0.6
         COHERENCE: 0.9
         HELPFULNESS: 0.5
         IS_OFF_TOPIC: false
@@ -141,7 +129,7 @@ class TestRegexExtractScores:
         """
         result = _regex_extract_scores(text)
         assert result["clarity"] == 0.8
-        assert result["completeness"] == 0.6
+        assert result["coherence"] == 0.9
         assert result["overall_score"] is not None
 
     def test_no_scores(self):

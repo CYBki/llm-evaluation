@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 
 _FLOAT_FIELDS = [
     "clarity",
-    "completeness",
     "coherence",
     "helpfulness",
     "overall_score",
@@ -31,7 +30,7 @@ _FLOAT_FIELDS = [
 ]
 _BOOL_FIELDS = ["is_off_topic", "is_deflection"]
 _REQUIRED_FIELDS = (
-    _FLOAT_FIELDS + _BOOL_FIELDS + ["reasoning_summary", "disagreement_claims"]
+    _FLOAT_FIELDS + _BOOL_FIELDS + ["reasoning_summary"]
 )
 
 _MAX_STAGE_2_RETRIES = 3
@@ -368,7 +367,7 @@ async def evaluate_trace(
             ),
             "evaluation_confidence": parsed.get("evaluation_confidence"),
             "reasoning_summary": parsed.get("reasoning_summary"),
-            "disagreement_claims": parsed.get("disagreement_claims", []),
+            "disagreement_claims": rag_results.get("hallucination_claims", []),
             "stage_1_reasoning": stage_1.content,
             "raw_response": raw_responses,
             "model_used": f"{settings.stage_1_model} + {settings.stage_2_model}",
@@ -455,7 +454,6 @@ def _safe_parse_json(content: str) -> dict[str, Any]:
 
     return {
         "reasoning_summary": "Stage 2 JSON parse failed",
-        "disagreement_claims": [],
     }
 
 
@@ -473,8 +471,6 @@ def _coerce_types(parsed: dict[str, Any]) -> dict[str, Any]:
         val = parsed.get(field)
         if isinstance(val, str):
             parsed[field] = val.lower() in ("true", "1", "yes", "evet")
-    if not isinstance(parsed.get("disagreement_claims"), list):
-        parsed["disagreement_claims"] = []
     return parsed
 
 
@@ -492,8 +488,6 @@ def _validate_schema(parsed: dict[str, Any]) -> list[str]:
         v = parsed.get(f)
         if v is not None and not isinstance(v, bool):
             errors.append(f"{f} must be boolean, got {type(v).__name__}")
-    if not isinstance(parsed.get("disagreement_claims"), list):
-        errors.append("disagreement_claims must be an array")
     if (parsed.get("reasoning_summary") or "").strip() == "Stage 2 JSON parse failed":
         errors.append("JSON parse failed")
     return errors
@@ -509,13 +503,11 @@ def _regex_extract_scores(stage_1_text: str) -> dict[str, Any]:
     """Deterministic fallback: extract scores from Stage 1 CoT text via regex."""
     result: dict[str, Any] = {
         "reasoning_summary": "Scores extracted via regex fallback from Stage 1 text.",
-        "disagreement_claims": [],
     }
 
     # Patterns like "CLARITY: 0.7", "Clarity: 0.7/1.0", "clarity = 0.7" etc.
     float_patterns = {
         "clarity": r"(?:CLARITY|clarity)[:\s=]+([01](?:\.\d+)?)",
-        "completeness": r"(?:COMPLETENESS|completeness)[:\s=]+([01](?:\.\d+)?)",
         "coherence": r"(?:COHERENCE|coherence)[:\s=]+([01](?:\.\d+)?)",
         "helpfulness": r"(?:HELPFULNESS|helpfulness)[:\s=]+([01](?:\.\d+)?)",
         "evaluation_confidence": r"(?:EVALUATION.?CONFIDENCE|confidence)[:\s=]+([01](?:\.\d+)?)",

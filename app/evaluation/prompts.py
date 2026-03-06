@@ -53,56 +53,22 @@ STAGE_2_JSON_SCHEMA = {
         "properties": {
             "clarity": {"type": "number"},
             "is_off_topic": {"type": "boolean"},
-            "completeness": {"type": "number"},
             "coherence": {"type": "number"},
             "helpfulness": {"type": "number"},
             "is_deflection": {"type": "boolean"},
             "overall_score": {"type": "number"},
             "evaluation_confidence": {"type": "number"},
             "reasoning_summary": {"type": "string"},
-            "disagreement_claims": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "context_quote": {"type": "string"},
-                        "context_quote_type": {
-                            "type": "string",
-                            "enum": ["instruction", "factual claim"],
-                        },
-                        "answer_quote": {"type": "string"},
-                        "reasoning": {"type": "string"},
-                        "disagreement_type": {
-                            "type": "string",
-                            "enum": [
-                                "agreement",
-                                "unsupported claim",
-                                "confirmed contradiction",
-                            ],
-                        },
-                    },
-                    "required": [
-                        "context_quote",
-                        "context_quote_type",
-                        "answer_quote",
-                        "reasoning",
-                        "disagreement_type",
-                    ],
-                    "additionalProperties": False,
-                },
-            },
         },
         "required": [
             "clarity",
             "is_off_topic",
-            "completeness",
             "coherence",
             "helpfulness",
             "is_deflection",
             "overall_score",
             "evaluation_confidence",
             "reasoning_summary",
-            "disagreement_claims",
         ],
         "additionalProperties": False,
     },
@@ -111,22 +77,12 @@ STAGE_2_JSON_SCHEMA = {
 _EXAMPLE_JSON = """{
   "clarity": 0.7,
   "is_off_topic": false,
-  "completeness": 0.4,
   "coherence": 0.7,
   "helpfulness": 0.4,
   "is_deflection": false,
   "overall_score": 0.55,
   "evaluation_confidence": 0.8,
-  "reasoning_summary": "Cevap kismen dogru; completeness eksik, bir fabricated claim var.",
-  "disagreement_claims": [
-    {
-      "context_quote": "Paris is the capital of France.",
-      "context_quote_type": "factual claim",
-      "answer_quote": "Berlin is the capital of France.",
-      "reasoning": "Cevap Berlin diyor ama baglam Paris diyor.",
-      "disagreement_type": "confirmed contradiction"
-    }
-  ]
+  "reasoning_summary": "Cevap kismen dogru; yardimci ama bazi noktalar eksik."
 }"""
 
 STAGE_2_SYSTEM_PROMPT = f"""
@@ -136,7 +92,6 @@ Output ONLY JSON, nothing else.
 
 Float values must be between 0.0 and 1.0.
 Boolean values must be true/false.
-disagreement_claims can be an empty array [] or contain objects.
 
 EXAMPLE OUTPUT:
 {_EXAMPLE_JSON}
@@ -151,7 +106,6 @@ Rules:
 - Float fields must be in [0.0, 1.0].
 - Boolean fields must be true/false.
 - Fill in missing fields by extracting from the original reasoning.
-- disagreement_claims must always be an array (may be empty).
 
 EXPECTED FORMAT:
 {_EXAMPLE_JSON}

@@ -1,6 +1,6 @@
 # RAG Eval API — Mimari İyileştirmeler Dokümantasyonu
 
-> Bu dokümanda yapılan **53 düzeltme ve optimizasyonun** (20 orijinal + 27 mimari review + 6 performans optimizasyonu) tamamı, sıfırdan öğrenen birine anlatır gibi açıklanmıştır. Her madde basit bir benzetmeyle başlar, teknik detaya iner ve kodda ne yapıldığını gösterir.
+> Bu dokümanda yapılan **57 düzeltme ve optimizasyonun** (20 orijinal + 27 mimari review + 6 performans optimizasyonu + 4 CI/test düzeltmesi) tamamı, sıfırdan öğrenen birine anlatır gibi açıklanmıştır. Her madde basit bir benzetmeyle başlar, teknik detaya iner ve kodda ne yapıldığını gösterir.
 
 ---
 
@@ -64,6 +64,14 @@
 | 51 | [Completeness / Citation Token Limit Fix](#madde-51) |
 | 52 | [evaluation_duration_ms Feature](#madde-52) |
 | 53 | [Pipeline Timing Instrumentation](#madde-53) |
+
+### CI / Test Düzeltmeleri
+| # | Başlık |
+|---|--------|
+| 54 | [Hallucination Scoring Fonksiyonu Ayrıştırma](#madde-54) |
+| 55 | [Test Suite — Capped Penalty API Güncelleme](#madde-55) |
+| 56 | [Test Suite — Ağırlık Formülü Güncelleme](#madde-56) |
+| 57 | [CI Ruff Versiyon Sabitleme](#madde-57) |
 
 ---
 
@@ -1464,6 +1472,10 @@ Aynı trace'in iki kez ingest edilmesini engellemek için client-generated idemp
 | **51** | **Doğruluk** | Completeness/citation hep null | Token limit artırma (1024→2048/1536) | ✅ |
 | **52** | **Operasyon** | Evaluation süresi takibi yok | evaluation_duration_ms (DB + webhook + API) | ✅ |
 | **53** | **Operasyon** | Stage/metric timing görünürlüğü yok | Pipeline timing instrumentation (loglar) | ✅ |
+| **54** | **Testlenebilirlik** | Scoring mantığı async fonksiyona gömülü | `score_hallucination_claims()` pure function | ✅ |
+| **55** | **CI** | Testler eski API'yi import ediyor | Capped penalty test sınıfı güncelleme | ✅ |
+| **56** | **CI** | Test ağırlıkları güncel değil | 10-metrik ağırlıklara göre yeniden hesaplama | ✅ |
+| **57** | **CI** | Ruff versiyonu sabitlenmemiş | `ruff==0.15.4` pin | ✅ |
 
 ---
 
@@ -1830,3 +1842,241 @@ Tüm pipeline darboğazları artık loglardan görülebiliyor.
 | **Phase 2** | Hallucination single-call | 53s | 26-35s | -45% |
 | **Phase 3** | Pipeline restructure + Stage 2 token | 35s | 16.8s (prod) | -52% |
 | **Toplam** | | **144s** | **16.8s** | **-88%** |
+
+---
+
+## CI / TEST DÜZELTMELERİ
+
+> Bu bölümde, performans optimizasyonları sonrası CI pipeline'ında ortaya çıkan test hatalarının düzeltilmesi anlatılmıştır.
+
+---
+
+<details id="madde-54">
+<summary><strong>✅ Madde 54 — Hallucination Scoring Fonksiyonu Ayrıştırma</strong></summary>
+
+### Basit Anlatım
+Bir hesap makinesinin içi açılamıyorsa, hesabın doğruluğunu test edemezsin. Hesap fonksiyonunu ayrı bir modül olarak çıkarırsan, bağımsız test edebilirsin.
+
+### Sorun
+Hallucination single-call optimizasyonunda (Madde 49), puanlama mantığı `compute_hallucination_rubric()` async fonksiyonunun **içine gömülü** kaldı. Bu fonksiyonu test etmek için tüm LLM çağrısını mock'lamak gerekiyordu — gereksiz karmaşık.
+
+```python
+# ESKİ: Scoring mantığı async fonksiyonun İÇİNDE
+async def compute_hallucination_rubric(client, answer, contexts):
+    resp = await client.chat_completion(...)  # LLM çağrısı
+    claims = parse(resp)
+    # ↓ Saf matematik, LLM'e bağlı değil ama test edilemiyor ↓
+    total_penalty = 0.0
+    for item in claims:
+        if item["disagreement_type"] == "unsupported claim":
+            total_penalty += 0.15
+    score = max(0.0, 1.0 - total_penalty)
+    return {"hallucination_score": score, ...}
+```
+
+### Ne Yapıldı
+Puanlama mantığı `score_hallucination_claims()` adlı bağımsız bir **pure function**'a çıkarıldı:
+
+```python
+# YENİ: Bağımsız, test edilebilir pure function
+def score_hallucination_claims(claims):
+    """Girdi: claim listesi → Çıktı: skor dict. LLM yok, saf matematik."""
+    if not claims:
+        return {"hallucination_score": None, "faithfulness": None}
+    total_penalty = 0.0
+    unfaithful_count = 0
+    for item in claims:
+        dtype = item.get("disagreement_type", "").lower()
+        if dtype == "unsupported claim":
+            total_penalty += 0.15
+            unfaithful_count += 1
+        elif dtype == "confirmed contradiction":
+            total_penalty += 0.30
+            unfaithful_count += 1
+    return {
+        "hallucination_score": max(0.0, 1.0 - total_penalty),
+        "faithfulness": max(0.0, 1.0 - unfaithful_count * 0.20),
+    }
+
+# Async fonksiyon artık helper'ı çağırıyor:
+async def compute_hallucination_rubric(client, answer, contexts):
+    resp = await client.chat_completion(...)
+    claims = parse(resp)
+    scores = score_hallucination_claims(claims)  # ← helper çağrısı
+    return {**scores, "hallucination_claims": claims}
+```
+
+### Teknik Terimler
+- **Pure function:** Yan etkisi olmayan, sadece girdisine bağlı fonksiyon. Aynı girdi → her zaman aynı çıktı. Test etmesi kolay.
+- **Mock:** Test sırasında gerçek bağımlılığı (LLM API gibi) sahte bir nesneyle değiştirme.
+
+### Dosyalar
+- `app/evaluation/rag_metrics.py` — `score_hallucination_claims()` eklendi, `compute_hallucination_rubric()` bunu çağırıyor
+
+### Etki
+Scoring mantığı artık LLM mock'lamadan, salt fonksiyon çağrısıyla test edilebilir.
+
+</details>
+
+---
+
+<details id="madde-55">
+<summary><strong>✅ Madde 55 — Test Suite: Capped Penalty API Güncelleme</strong></summary>
+
+### Basit Anlatım
+Bir sınavın cevap anahtarı değiştiyse, eski anahtar ile kontrol edersen doğru cevapları "yanlış" sayarsın. Testler de aynı: API değiştiyse, testlerin de güncellenmesi gerekir.
+
+### Sorun
+CI'da `test_rag_metrics.py` dosyası şu hatayı veriyordu:
+```
+ImportError: cannot import name 'compute_hallucination_score' from 'app.evaluation.rag_metrics'
+```
+
+Üstelik eski testler **ratio-based** (oran) puanlama sistemiyle yazılmıştı, yeni sistem **capped penalty** (sabit ceza) kullanıyor:
+
+| | Eski | Yeni |
+|---|---|---|
+| Fonksiyon adı | `compute_hallucination_score()` | `score_hallucination_claims()` |
+| Girdi formatı | `{"verdict": "supported"}` | `{"disagreement_type": "agreement"}` |
+| Puanlama | supported / total (oran) | 1.0 − sabit cezalar |
+| Agreement etkisi | Skoru YÜKSELTİR | Skoru ETKİLEMEZ |
+
+### Ne Yapıldı
+
+```python
+# ESKİ TEST (geçersiz):
+from app.evaluation.rag_metrics import compute_hallucination_score
+
+def test_mixed(self):
+    claims = [
+        {"verdict": "supported"},
+        {"verdict": "not_supported"},
+        {"verdict": "contradicted"},
+    ]
+    assert compute_hallucination_score(claims) == 0.5  # oran
+
+# YENİ TEST:
+from app.evaluation.rag_metrics import score_hallucination_claims
+
+def test_mixed_penalties(self):
+    claims = [
+        {"disagreement_type": "agreement"},               # etki yok
+        {"disagreement_type": "unsupported claim"},       # -0.15
+        {"disagreement_type": "confirmed contradiction"}, # -0.30
+    ]
+    result = score_hallucination_claims(claims)
+    assert result["hallucination_score"] == 0.55  # 1.0 - 0.15 - 0.30
+    assert result["faithfulness"] == 0.60          # 1.0 - 2*0.20
+```
+
+Toplam 8 test case güncellendi: all_agreement, single_unsupported, single_contradiction, mixed_penalties, penalty_floors_at_zero, empty_claims, none_claims, agreement_doesnt_affect_score.
+
+### Dosyalar
+- `tests/test_rag_metrics.py` — `TestScoreHallucinationClaims` sınıfı tamamen yeniden yazıldı
+
+### Etki
+CI import hatası giderildi. Testler yeni capped penalty puanlama modelini doğruluyor.
+
+</details>
+
+---
+
+<details id="madde-56">
+<summary><strong>✅ Madde 56 — Test Suite: Ağırlık Formülü Güncelleme</strong></summary>
+
+### Basit Anlatım
+Bir sınavda "matematik %30, fizik %20" iken, ağırlıklar "matematik %15, fizik %5" olarak değiştirildiyse, not hesaplama testleri de yeni ağırlıklarla yapılmalı.
+
+### Sorun
+`_compute_overall_score()` fonksiyonunun ağırlıkları güncellenmişti ama testler eski ağırlıklarla hesap yapıyordu. CI'da 5 test fail oluyordu.
+
+Eski ve yeni ağırlıklar:
+```python
+# ESKİ (testlerin beklediği):        # YENİ (koddaki gerçek):
+coherence:       0.10                coherence:         0.05
+helpfulness:     0.10                helpfulness:       0.15
+clarity:         0.05                clarity:           0.05
+completeness:    0.15                completeness:      0.10
+answer_relevancy:0.10                answer_relevancy:  0.15
+                                     hallucination:     0.15
+                                     faithfulness:      0.10
+                                     context_precision: 0.10
+                                     context_recall:    0.10
+                                     citation_check:    0.05
+```
+
+### Örnek — `test_full_metrics`:
+```python
+parsed = {"coherence": 0.8, "helpfulness": 0.7, "clarity": 0.9}
+rag = {"completeness": 0.8, "answer_relevancy": 0.7}
+
+# ESKİ (yanlış): 0.10*0.8 + 0.10*0.7 + 0.05*0.9 + 0.15*0.8 + 0.10*0.7 = 0.385
+# total=0.50 → score = 0.77 ← test böyle bekliyordu
+
+# YENİ (doğru): 0.05*0.8 + 0.15*0.7 + 0.05*0.9 + 0.10*0.8 + 0.15*0.7 = 0.375
+# total=0.50 → score = 0.75 ← düzeltilmiş beklenti
+```
+
+**Ayrıca:** `assert result["specificity"] == 0.7` kaldırıldı — `specificity` artık kullanılmayan bir metrik (regex'te de eşleşmiyor). Yerine `assert result["completeness"] == 0.6` eklendi.
+
+### Ne Yapıldı
+5 test case'in beklenen değerleri yeni 10-metrik ağırlık sistemiyle yeniden hesaplandı:
+- `test_full_metrics` — 0.77 → 0.75
+- `test_partial_metrics` — 0.70 → 0.65
+- `test_rag_completeness_overrides_parsed` — 0.83 → 0.82
+- `test_context_precision_only` — 0.8846 → 0.9167
+- `test_hallucination_score_influences_overall` — 0.75 → 0.8235
+
+### Dosyalar
+- `tests/test_evaluator.py` — `TestComputeOverallScore` sınıfındaki 5 test + `TestRegexExtractScores`
+
+### Etki
+Tüm CI testleri güncel ağırlıklarla doğru beklentilere sahip.
+
+</details>
+
+---
+
+<details id="madde-57">
+<summary><strong>✅ Madde 57 — CI Ruff Versiyon Sabitleme</strong></summary>
+
+### Basit Anlatım
+Bir binadaki asansörün her gün farklı hızda çalışması gibi — bugün 3. kata 10 saniyede çıkıyor, yarın 15 saniye. Tutarsız!.. CI'da ruff versiyonu sabitlenmezse, aynı kod bugün geçer yarın geçmez.
+
+### Sorun
+CI'da `pip install ruff` ile her çalışmada **en son sürüm** yükleniyordu:
+```yaml
+# ESKİ:
+pip install ruff  # Bugün 0.15.4, yarın 0.16.0, haftaya 0.17.0...
+```
+
+Ruff'un yeni sürümleri format kurallarını değiştirebilir:
+- Lokal: ruff 0.15.4 → dosyalar "formatted" ✅
+- CI: ruff 0.16.0 → aynı dosyalar "would reformat" ❌
+
+CI hata mesajı:
+```
+Would reformat: app/evaluation/evaluator.py
+Would reformat: app/evaluation/prompts.py
+Would reformat: app/evaluation/rag_metrics.py
+3 files would be reformatted
+Error: Process completed with exit code 1.
+```
+
+### Ne Yapıldı
+```yaml
+# YENİ — .github/workflows/ci.yml:
+pip install ruff==0.15.4  # Her zaman aynı versiyon, lokal ile uyumlu
+```
+
+### Teknik Terimler
+- **Version pinning:** Bir bağımlılığın tam sürümünü sabitleyerek, farklı ortamlarda (lokal, CI, prodüksiyon) tutarlı davranış garantisi.
+- **Reproducible builds:** Aynı kodu her yerde aynı şekilde derleyip/çalıştırabilme ilkesi.
+
+### Dosyalar
+- `.github/workflows/ci.yml` — `pip install ruff` → `pip install ruff==0.15.4`
+
+### Etki
+Lokal ve CI ortamları her zaman aynı ruff kurallarını kullanıyor — "lokalde geçiyor CI'da geçmiyor" sorunu ortadan kalktı.
+
+</details>
