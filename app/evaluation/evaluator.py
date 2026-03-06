@@ -29,9 +29,7 @@ _FLOAT_FIELDS = [
     "evaluation_confidence",
 ]
 _BOOL_FIELDS = ["is_off_topic", "is_deflection"]
-_REQUIRED_FIELDS = (
-    _FLOAT_FIELDS + _BOOL_FIELDS + ["reasoning_summary"]
-)
+_REQUIRED_FIELDS = _FLOAT_FIELDS + _BOOL_FIELDS + ["reasoning_summary"]
 
 _MAX_STAGE_2_RETRIES = 3
 
