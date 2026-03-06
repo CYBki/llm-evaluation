@@ -3,7 +3,7 @@ RAG-specific evaluation metrics.
 
 Six metrics computed independently from the two-stage rubric pipeline:
   1. answer_relevancy  – statement-level relevancy classification
-  2. hallucination_score – dedicated rubric judge (two-stage CoT -> structured JSON)
+  2. hallucination_score – hybrid single-call with CoT-in-JSON (chain_of_thought + structured claims)
   3. citation_check    – citation tag verification against contexts
   4. completeness      – key-point extraction + coverage verification
   5. context_precision  – retrieval quality: are top contexts relevant?
@@ -31,11 +31,14 @@ from app.evaluation.prompts import (
     CONTEXT_PRECISION_SYSTEM_PROMPT,
     CONTEXT_RECALL_JSON_SCHEMA,
     CONTEXT_RECALL_SYSTEM_PROMPT,
+    HALLUCINATION_JSON_SCHEMA,
+    HALLUCINATION_SYSTEM_PROMPT,
     build_answer_relevancy_user_prompt,
     build_citation_check_user_prompt,
     build_completeness_user_prompt,
     build_context_precision_user_prompt,
     build_context_recall_user_prompt,
+    build_hallucination_user_prompt,
 )
 
 logger = logging.getLogger(__name__)
@@ -171,10 +174,12 @@ async def compute_hallucination_rubric(
     contexts: list[str],
 ) -> dict[str, Any]:
     """
-    Hallucination detection using a single structured-output call.
+    Dedicated hallucination detection using hybrid single-call with CoT-in-JSON.
 
-    Extracts atomic claims from the answer, compares each against context
-    passages, and returns disagreement_claims[] with types directly as JSON.
+    The model writes chain-of-thought reasoning FIRST in the chain_of_thought field,
+    then outputs structured disagreement_claims. This achieves:
+    - Two-stage quality: model reasons freely before making judgments
+    - Single-call speed: only 1 API call instead of 2
 
     Returns:
         {
@@ -189,13 +194,6 @@ async def compute_hallucination_rubric(
             "faithfulness": None,
             "hallucination_claims": [],
         }
-
-    # Lazy import to avoid circular dependency at module load time
-    from app.evaluation.prompts import (
-        HALLUCINATION_JSON_SCHEMA,
-        HALLUCINATION_SYSTEM_PROMPT,
-        build_hallucination_user_prompt,
-    )
 
     try:
         resp = await client.chat_completion(
