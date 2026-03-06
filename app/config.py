@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     openai_base_url: str = "https://api.openai.com/v1"
     openai_timeout_seconds: float = 120.0
     stage_1_model: str = "gpt-5.2"
-    stage_2_model: str = "gpt-5-mini"
+    stage_2_model: str = "gpt-4o-mini"
     rag_metrics_model: str = "gpt-5-mini"
     prompt_version: str = "v1.0"
     rubric_version: str = "v1.0"
@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     # ── Model pricing (per 1M tokens, USD) ──
     stage1_input_price: float = 2.50  # gpt-5.2 input
     stage1_output_price: float = 10.00  # gpt-5.2 output
-    stage2_input_price: float = 0.40  # gpt-5-mini input
-    stage2_output_price: float = 1.60  # gpt-5-mini output
+    stage2_input_price: float = 0.15  # gpt-4o-mini input
+    stage2_output_price: float = 0.60  # gpt-4o-mini output
 
     # ── Prompt truncation limits (characters) ──
     max_question_chars: int = 8_000
