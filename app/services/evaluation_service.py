@@ -448,29 +448,47 @@ async def _evaluate_trace_async(trace_id: str) -> None:
 
 def _build_webhook_payload(trace: Trace, evaluation: EvaluationResult) -> dict:
     """Build the JSON payload sent to the webhook URL."""
+    from app.metrics.definitions import build_evaluation_commentary, get_verdict
+
+    scores = {
+        "overall_score": evaluation.overall_score,
+        "clarity": evaluation.clarity,
+        "coherence": evaluation.coherence,
+        "helpfulness": evaluation.helpfulness,
+        "completeness": evaluation.completeness,
+        "answer_relevancy": evaluation.answer_relevancy,
+        "faithfulness": evaluation.faithfulness,
+        "hallucination_score": evaluation.hallucination_score,
+        "citation_check": evaluation.citation_check,
+        "context_precision": evaluation.context_precision,
+        "context_recall": evaluation.context_recall,
+    }
+
+    verdicts = {
+        name: get_verdict(name, value)
+        for name, value in scores.items()
+        if value is not None
+    }
+
+    commentary = build_evaluation_commentary(evaluation.overall_score, scores)
+
     return {
         "event": "evaluation.completed",
         "trace_id": str(trace.id),
         "status": trace.status,
         "evaluation_duration_ms": evaluation.evaluation_duration_ms,
-        "scores": {
-            "overall_score": evaluation.overall_score,
-            "clarity": evaluation.clarity,
-            "coherence": evaluation.coherence,
-            "helpfulness": evaluation.helpfulness,
-            "completeness": evaluation.completeness,
-            "answer_relevancy": evaluation.answer_relevancy,
-            "faithfulness": evaluation.faithfulness,
-            "hallucination_score": evaluation.hallucination_score,
-            "citation_check": evaluation.citation_check,
-            "context_precision": evaluation.context_precision,
-            "context_recall": evaluation.context_recall,
-        },
+        "scores": scores,
+        "verdicts": verdicts,
         "flags": {
             "is_off_topic": evaluation.is_off_topic,
             "is_deflection": evaluation.is_deflection,
         },
+        "details": {
+            "hallucination_claims": evaluation.hallucination_claims or [],
+            "completeness_key_points": evaluation.completeness_key_points or [],
+        },
         "reasoning_summary": evaluation.reasoning_summary,
+        "evaluation_commentary": commentary,
         "cost_usd": evaluation.cost_usd,
         "total_tokens": evaluation.total_tokens,
     }
