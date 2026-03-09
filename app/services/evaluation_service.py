@@ -15,56 +15,14 @@ from app.database import SessionLocal
 from app.evaluation import evaluate_trace
 from app.models.evaluation import EvaluationResult, StepEvaluationResult
 from app.models.trace import Trace, TraceStatus
+from app.services.evaluation_result_mapper import (
+    apply_result_to_evaluation,
+    apply_result_to_step,
+    copy_cached_evaluation,
+)
 from app.services.webhook_service import deliver_webhook
 
 logger = logging.getLogger(__name__)
-
-_COMMON_RESULT_FIELD_MAP = (
-    ("clarity", "clarity"),
-    ("is_off_topic", "is_off_topic"),
-    ("completeness", "completeness"),
-    ("coherence", "coherence"),
-    ("helpfulness", "helpfulness"),
-    ("is_deflection", "is_deflection"),
-    ("overall_score", "overall_score"),
-    ("evaluation_confidence", "evaluation_confidence"),
-    ("reasoning_summary", "reasoning_summary"),
-    ("answer_relevancy", "answer_relevancy"),
-    ("faithfulness", "faithfulness"),
-    ("hallucination_score", "hallucination_score"),
-    ("citation_check", "citation_check"),
-    ("faithfulness_claims", "hallucination_claims"),
-    ("hallucination_claims", "hallucination_claims"),
-    ("completeness_key_points", "completeness_key_points"),
-    ("context_precision", "context_precision"),
-    ("context_recall", "context_recall"),
-    ("model_used", "model_used"),
-)
-
-_EVALUATION_ONLY_FIELD_MAP = (
-    ("disagreement_claims", "disagreement_claims"),
-    ("stage_1_reasoning", "stage_1_reasoning"),
-    ("raw_response", "raw_response"),
-    ("prompt_version", "prompt_version"),
-    ("rubric_version", "rubric_version"),
-    ("prompt_tokens", "prompt_tokens"),
-    ("completion_tokens", "completion_tokens"),
-    ("total_tokens", "total_tokens"),
-    ("cost_usd", "cost_usd"),
-)
-
-_CACHE_ONLY_FIELDS = (
-    "content_hash",
-    "evaluation_duration_ms",
-)
-
-_CACHED_EVALUATION_FIELDS = tuple(
-    dict.fromkeys(
-        [target_attr for target_attr, _ in _COMMON_RESULT_FIELD_MAP]
-        + [target_attr for target_attr, _ in _EVALUATION_ONLY_FIELD_MAP]
-        + list(_CACHE_ONLY_FIELDS)
-    )
-)
 
 
 @contextmanager
@@ -146,30 +104,6 @@ def wait_for_batch_threads(timeout: float = 60.0) -> None:
     _active_batch_threads.clear()
 
 
-def _apply_result_fields(
-    target: EvaluationResult | StepEvaluationResult,
-    result: dict,
-    field_map: tuple[tuple[str, str], ...],
-) -> None:
-    """Copy selected values from result dict onto a target ORM object.
-
-    Each tuple is (target_attr, result_key).
-    """
-    for target_attr, result_key in field_map:
-        setattr(target, target_attr, result.get(result_key))
-
-
-def _apply_result_to_evaluation(evaluation: EvaluationResult, result: dict) -> None:
-    """Map eval result dict fields onto an EvaluationResult ORM object."""
-    _apply_result_fields(evaluation, result, _COMMON_RESULT_FIELD_MAP)
-    _apply_result_fields(evaluation, result, _EVALUATION_ONLY_FIELD_MAP)
-
-
-def _apply_result_to_step(step_eval: StepEvaluationResult, result: dict) -> None:
-    """Map eval result dict fields onto a StepEvaluationResult ORM object."""
-    _apply_result_fields(step_eval, result, _COMMON_RESULT_FIELD_MAP)
-
-
 def _compute_content_hash(
     question: str,
     answer: str,
@@ -183,12 +117,6 @@ def _compute_content_hash(
         ensure_ascii=False,
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def _copy_evaluation(source: EvaluationResult, target: EvaluationResult) -> None:
-    """Copy all metric fields from a cached evaluation to a new one."""
-    for col in _CACHED_EVALUATION_FIELDS:
-        setattr(target, col, getattr(source, col))
 
 
 def _extract_steps(trace: Trace) -> list[dict] | None:
@@ -244,7 +172,7 @@ async def _evaluate_trace_async(trace_id: str) -> None:
                 content_hash[:12],
                 cached.trace_id,
             )
-            _copy_evaluation(cached, evaluation)
+            copy_cached_evaluation(cached, evaluation)
             trace.status = TraceStatus.COMPLETED.value
             db.add(evaluation)
             db.add(trace)
@@ -265,7 +193,7 @@ async def _evaluate_trace_async(trace_id: str) -> None:
             return
         eval_duration_ms = round((time.perf_counter() - eval_start) * 1000)
 
-        _apply_result_to_evaluation(evaluation, result)
+        apply_result_to_evaluation(evaluation, result)
         evaluation.evaluation_duration_ms = eval_duration_ms
         evaluation.content_hash = content_hash
 
@@ -315,7 +243,7 @@ async def _evaluate_trace_async(trace_id: str) -> None:
                     step_index=step_index,
                     agent_name=agent_name,
                 )
-                _apply_result_to_step(step_eval, step_result)
+                apply_result_to_step(step_eval, step_result)
                 db.add(step_eval)
 
                 if step_eval.overall_score is not None:

@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.models.trace import TraceStatus
 from app.schemas.validators import validate_https_webhook_url
 
 
@@ -25,7 +26,7 @@ class TraceCreate(BaseModel):
 
 class TraceIngestResponse(BaseModel):
     id: str
-    status: str
+    status: TraceStatus
     created_at: datetime
 
 

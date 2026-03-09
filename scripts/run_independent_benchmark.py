@@ -559,25 +559,6 @@ def build_perturbation_cases() -> list[dict]:
         "perturbed": {"question": PERTURB_QUESTION, "answer": contradictory_answer, "contexts": PERTURB_CONTEXTS},
     })
 
-    # ── specificity: vague language ──────────────────────────────
-    specific_answer = (
-        "The Eiffel Tower is a 330-metre wrought-iron lattice tower on the Champ de Mars in Paris. "
-        "It was designed by Gustave Eiffel's company and built from 1887 to 1889. "
-        "The construction cost 7,799,401.31 French gold francs. "
-        "It receives approximately 7 million visitors annually."
-    )
-    vague_answer = (
-        "The Eiffel Tower is a tall structure in a city in Europe. "
-        "It was designed by someone and built a while ago. "
-        "It cost some money to build. Many people visit it."
-    )
-    cases.append({
-        "name": "specificity_vague",
-        "metric": "specificity",
-        "original": {"question": PERTURB_QUESTION, "answer": specific_answer, "contexts": PERTURB_CONTEXTS},
-        "perturbed": {"question": PERTURB_QUESTION, "answer": vague_answer, "contexts": PERTURB_CONTEXTS},
-    })
-
     # ── citation_check: remove / corrupt citations ───────────────
     cited_answer = (
         "The Eiffel Tower receives about 7 million visitors per year [Source 1]. "

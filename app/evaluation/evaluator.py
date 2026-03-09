@@ -8,9 +8,13 @@ import logging
 import re
 
 from app.config import settings
+from app.evaluation.client_provider import (
+    get_default_llm_client,
+    get_default_rag_client,
+)
 from app.evaluation.json_utils import safe_parse_json_object
+from app.evaluation.llm_client import LLMClientError
 from app.evaluation.llm_protocol import LLMChatClient
-from app.evaluation.llm_client import LLMClientError, OpenAILLMClient
 from app.evaluation.prompts import (
     STAGE_2_JSON_SCHEMA,
     STAGE_2_REPAIR_SYSTEM_PROMPT,
@@ -383,7 +387,8 @@ async def evaluate_trace(
     rag_client: LLMChatClient | None = None,
 ) -> dict[str, Any]:
     context_items = contexts or []
-    client = client or OpenAILLMClient()
+    client = client or get_default_llm_client()
+    rag_client = rag_client or get_default_rag_client()
 
     if not client.is_enabled:
         return _build_empty_result(
@@ -424,9 +429,12 @@ async def evaluate_trace(
         stage1_prompt_tokens = stage_1.prompt_tokens
         stage1_completion_tokens = stage_1.completion_tokens
 
-        parsed, raw_responses, stage2_prompt_tokens, stage2_completion_tokens = (
-            await _run_stage_2_with_retries(client, stage_1.content)
-        )
+        (
+            parsed,
+            raw_responses,
+            stage2_prompt_tokens,
+            stage2_completion_tokens,
+        ) = await _run_stage_2_with_retries(client, stage_1.content)
 
         t2 = time.perf_counter()
         logger.info("Timing — Stage 2: %.1fs (started right after Stage 1)", t2 - t1)

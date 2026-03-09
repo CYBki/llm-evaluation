@@ -9,12 +9,43 @@ from app.evaluation.evaluator import (
     _regex_extract_scores,
     _safe_parse_json,
     _validate_schema,
+    evaluate_trace,
 )
+from app.evaluation.llm_client import LLMResponse
+from app.evaluation.prompts import (
+    ANSWER_RELEVANCY_SYSTEM_PROMPT,
+    CITATION_CHECK_SYSTEM_PROMPT,
+    COMPLETENESS_SYSTEM_PROMPT,
+    CONTEXT_PRECISION_SYSTEM_PROMPT,
+    CONTEXT_RECALL_SYSTEM_PROMPT,
+    HALLUCINATION_SYSTEM_PROMPT,
+    STAGE_1_SYSTEM_PROMPT,
+    STAGE_2_SYSTEM_PROMPT,
+)
+
+
+class _ScriptedFakeClient:
+    def __init__(self, responses_by_system_prompt, *, enabled: bool = True):
+        self._responses_by_system_prompt = {
+            key: list(value) for key, value in responses_by_system_prompt.items()
+        }
+        self.is_enabled = enabled
+        self.calls: list[dict] = []
+        self._accumulated_prompt_tokens = 0
+        self._accumulated_completion_tokens = 0
+
+    async def chat_completion(self, **kwargs):
+        self.calls.append(kwargs)
+        key = kwargs["system_prompt"]
+        response = self._responses_by_system_prompt[key].pop(0)
+        self._accumulated_prompt_tokens += response.prompt_tokens
+        self._accumulated_completion_tokens += response.completion_tokens
+        return response
 
 
 class TestSafeParseJson:
     def test_valid_json(self):
-        result = _safe_parse_json('{"clarity": 0.8, "specificity": 0.7}')
+        result = _safe_parse_json('{"clarity": 0.8, "coherence": 0.7}')
         assert result["clarity"] == 0.8
 
     def test_json_in_code_fence(self):
@@ -251,3 +282,118 @@ class TestComputeOverallScore:
         # missing faithfulness, citation_check → total_weight = 0.85
         # weighted = 0.15*0 + 0.15*1 + 0.10*1 + 0.10*1 + 0.10*1 + 0.15*1 + 0.05*1 + 0.05*1 = 0.70
         assert score == pytest.approx(0.70 / 0.85, abs=0.001)
+
+
+class TestEvaluateTraceWithFakeClients:
+    @pytest.mark.asyncio
+    async def test_uses_injected_clients_end_to_end(self):
+        eval_client = _ScriptedFakeClient(
+            {
+                STAGE_1_SYSTEM_PROMPT: [
+                    LLMResponse(
+                        content="Stage 1 reasoning",
+                        raw={"stage": 1},
+                        prompt_tokens=11,
+                        completion_tokens=7,
+                    )
+                ],
+                STAGE_2_SYSTEM_PROMPT: [
+                    LLMResponse(
+                        content='{"clarity": 0.9, "coherence": 0.8, "helpfulness": 0.7, "overall_score": 0.8, "evaluation_confidence": 0.95, "is_off_topic": false, "is_deflection": false, "reasoning_summary": "Good answer."}',
+                        raw={"stage": 2},
+                        prompt_tokens=13,
+                        completion_tokens=5,
+                    )
+                ],
+            }
+        )
+        rag_client = _ScriptedFakeClient(
+            {
+                ANSWER_RELEVANCY_SYSTEM_PROMPT: [
+                    LLMResponse(
+                        content='{"statements": [{"text": "A", "relevant": true}]}',
+                        raw={"metric": "answer_relevancy"},
+                        prompt_tokens=3,
+                        completion_tokens=2,
+                    )
+                ],
+                CITATION_CHECK_SYSTEM_PROMPT: [
+                    LLMResponse(
+                        content='{"citations": [{"verdict": "correct"}]}',
+                        raw={"metric": "citation_check"},
+                        prompt_tokens=2,
+                        completion_tokens=1,
+                    )
+                ],
+                HALLUCINATION_SYSTEM_PROMPT: [
+                    LLMResponse(
+                        content='{"disagreement_claims": [{"answer_quote": "A", "disagreement_type": "agreement", "reasoning": "ok"}]}',
+                        raw={"metric": "hallucination"},
+                        prompt_tokens=5,
+                        completion_tokens=4,
+                    )
+                ],
+                COMPLETENESS_SYSTEM_PROMPT: [
+                    LLMResponse(
+                        content='{"key_points": [{"point": "A", "status": "covered", "evidence": "ctx"}]}',
+                        raw={"metric": "completeness"},
+                        prompt_tokens=4,
+                        completion_tokens=2,
+                    )
+                ],
+                CONTEXT_PRECISION_SYSTEM_PROMPT: [
+                    LLMResponse(
+                        content='{"contexts": [{"context_index": 0, "relevant": true, "reason": "ok"}]}',
+                        raw={"metric": "context_precision"},
+                        prompt_tokens=2,
+                        completion_tokens=2,
+                    )
+                ],
+                CONTEXT_RECALL_SYSTEM_PROMPT: [
+                    LLMResponse(
+                        content='{"items": [{"statement": "A", "verdict": "found", "evidence": "ctx"}]}',
+                        raw={"metric": "context_recall"},
+                        prompt_tokens=2,
+                        completion_tokens=2,
+                    )
+                ],
+            }
+        )
+
+        result = await evaluate_trace(
+            question="What is the Eiffel Tower?",
+            answer="It is a tower in Paris [1].",
+            contexts=["The Eiffel Tower is in Paris."],
+            ground_truth="A tower in Paris.",
+            client=eval_client,
+            rag_client=rag_client,
+        )
+
+        assert result["clarity"] == 0.9
+        assert result["coherence"] == 0.8
+        assert result["completeness"] == 1.0
+        assert result["answer_relevancy"] == 1.0
+        assert result["faithfulness"] == 1.0
+        assert result["citation_check"] == 1.0
+        assert result["prompt_tokens"] == 42
+        assert result["completion_tokens"] == 25
+        assert len(eval_client.calls) == 2
+        assert len(rag_client.calls) == 6
+
+    @pytest.mark.asyncio
+    async def test_disabled_injected_client_skips_evaluation(self):
+        client = _ScriptedFakeClient({}, enabled=False)
+
+        result = await evaluate_trace(
+            question="Q?",
+            answer="A.",
+            contexts=None,
+            client=client,
+            rag_client=client,
+        )
+
+        assert result["raw_response"]["skipped"] is True
+        assert (
+            result["reasoning_summary"]
+            == "OPENAI_API_KEY not configured; evaluation skipped."
+        )

@@ -25,7 +25,7 @@ class EvaluationResult(Base):
     clarity: Mapped[float | None] = mapped_column(Float, nullable=True)
     specificity: Mapped[float | None] = mapped_column(
         Float, nullable=True
-    )  # DEPRECATED: unused, kept for backward compat
+    )  # Legacy compatibility column; no longer populated
     is_off_topic: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     completeness: Mapped[float | None] = mapped_column(Float, nullable=True)
     coherence: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -104,7 +104,7 @@ class StepEvaluationResult(Base):
     clarity: Mapped[float | None] = mapped_column(Float, nullable=True)
     specificity: Mapped[float | None] = mapped_column(
         Float, nullable=True
-    )  # DEPRECATED: unused, kept for backward compat
+    )  # Legacy compatibility column; no longer populated
     is_off_topic: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     completeness: Mapped[float | None] = mapped_column(Float, nullable=True)
     coherence: Mapped[float | None] = mapped_column(Float, nullable=True)

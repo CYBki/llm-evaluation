@@ -7,14 +7,41 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from app.evaluation.llm_client import LLMResponse
+from app.evaluation.prompts import (
+    ANSWER_RELEVANCY_SYSTEM_PROMPT,
+    CITATION_CHECK_SYSTEM_PROMPT,
+    COMPLETENESS_SYSTEM_PROMPT,
+    CONTEXT_PRECISION_SYSTEM_PROMPT,
+    CONTEXT_RECALL_SYSTEM_PROMPT,
+    HALLUCINATION_SYSTEM_PROMPT,
+)
 from app.evaluation.rag_metrics import (
     compute_context_precision,
     compute_context_recall,
+    compute_rag_metrics,
     score_hallucination_claims,
     cosine_similarity,
     has_citations,
     _safe_parse,
 )
+
+
+class _ScriptedFakeClient:
+    def __init__(self, responses_by_system_prompt, *, enabled: bool = True):
+        self._responses_by_system_prompt = {
+            key: list(value) for key, value in responses_by_system_prompt.items()
+        }
+        self.is_enabled = enabled
+        self._accumulated_prompt_tokens = 0
+        self._accumulated_completion_tokens = 0
+
+    async def chat_completion(self, **kwargs):
+        key = kwargs["system_prompt"]
+        response = self._responses_by_system_prompt[key].pop(0)
+        self._accumulated_prompt_tokens += response.prompt_tokens
+        self._accumulated_completion_tokens += response.completion_tokens
+        return response
 
 
 # ── cosine_similarity ──────────────────────────────────────────────────
@@ -252,7 +279,7 @@ class TestSafeParse:
 
 class TestComputeContextPrecision:
     def _run(self, coro):
-        return asyncio.get_event_loop().run_until_complete(coro)
+        return asyncio.run(coro)
 
     def test_all_relevant(self):
         mock_client = MagicMock()
@@ -315,7 +342,7 @@ class TestComputeContextPrecision:
 
 class TestComputeContextRecall:
     def _run(self, coro):
-        return asyncio.get_event_loop().run_until_complete(coro)
+        return asyncio.run(coro)
 
     def test_all_found(self):
         mock_client = MagicMock()
@@ -375,3 +402,77 @@ class TestComputeContextRecall:
         mock_client.is_enabled = False
         result = self._run(compute_context_recall(mock_client, "Q?", ["ctx1"], "GT"))
         assert result is None
+
+
+class TestComputeRagMetrics:
+    @pytest.mark.asyncio
+    async def test_aggregates_fake_client_results_and_tokens(self):
+        client = _ScriptedFakeClient(
+            {
+                ANSWER_RELEVANCY_SYSTEM_PROMPT: [
+                    LLMResponse(
+                        content='{"statements": [{"text": "A", "relevant": true}]}',
+                        raw={},
+                        prompt_tokens=1,
+                        completion_tokens=2,
+                    )
+                ],
+                CITATION_CHECK_SYSTEM_PROMPT: [
+                    LLMResponse(
+                        content='{"citations": [{"verdict": "correct"}]}',
+                        raw={},
+                        prompt_tokens=1,
+                        completion_tokens=1,
+                    )
+                ],
+                HALLUCINATION_SYSTEM_PROMPT: [
+                    LLMResponse(
+                        content='{"disagreement_claims": [{"answer_quote": "A", "disagreement_type": "agreement", "reasoning": "ok"}]}',
+                        raw={},
+                        prompt_tokens=2,
+                        completion_tokens=2,
+                    )
+                ],
+                COMPLETENESS_SYSTEM_PROMPT: [
+                    LLMResponse(
+                        content='{"key_points": [{"point": "A", "status": "covered", "evidence": "ctx"}]}',
+                        raw={},
+                        prompt_tokens=1,
+                        completion_tokens=1,
+                    )
+                ],
+                CONTEXT_PRECISION_SYSTEM_PROMPT: [
+                    LLMResponse(
+                        content='{"contexts": [{"context_index": 0, "relevant": true, "reason": "ok"}]}',
+                        raw={},
+                        prompt_tokens=1,
+                        completion_tokens=1,
+                    )
+                ],
+                CONTEXT_RECALL_SYSTEM_PROMPT: [
+                    LLMResponse(
+                        content='{"items": [{"statement": "A", "verdict": "found", "evidence": "ctx"}]}',
+                        raw={},
+                        prompt_tokens=1,
+                        completion_tokens=1,
+                    )
+                ],
+            }
+        )
+
+        result = await compute_rag_metrics(
+            question="Q?",
+            answer="A [1].",
+            contexts=["ctx1"],
+            ground_truth="GT",
+            client=client,
+        )
+
+        assert result["answer_relevancy"] == 1.0
+        assert result["completeness"] == 1.0
+        assert result["faithfulness"] == 1.0
+        assert result["citation_check"] == 1.0
+        assert result["context_precision"] == 1.0
+        assert result["context_recall"] == 1.0
+        assert result["_prompt_tokens"] == 7
+        assert result["_completion_tokens"] == 8

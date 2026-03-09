@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from app.schemas.auth import LoginRequest, RegisterRequest
 from app.schemas.ingest import TraceBatchCreate, TraceCreate
+from app.schemas.trace import TraceResponse
 
 
 class TestRegisterRequest:
@@ -98,3 +99,15 @@ class TestTraceBatchCreate:
                 traces=[TraceCreate(question="Q?", answer="A.")],
                 webhook_url="https://localhost/webhook",
             )
+
+
+class TestTraceResponse:
+    def test_status_is_coerced_to_enum(self):
+        response = TraceResponse(
+            id="1",
+            question="Q?",
+            answer="A.",
+            status="pending",
+            created_at="2026-01-01T00:00:00Z",
+        )
+        assert response.status.value == "pending"

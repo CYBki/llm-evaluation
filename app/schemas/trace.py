@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from app.models.trace import TraceStatus
+
 
 class ScoresResponse(BaseModel):
     """Numeric metric scores."""
@@ -122,7 +124,7 @@ class TraceResponse(BaseModel):
     answer: str
     contexts: list[str] | None = None
     metadata: dict | None = None
-    status: str
+    status: TraceStatus
     created_at: datetime
     evaluation: MultiAgentEvaluationResponse | EvaluationResponse | None = None
 
@@ -135,7 +137,7 @@ class TraceDetailResponse(BaseModel):
     answer: str
     contexts: list[str] | None = None
     metadata: dict | None = None
-    status: str
+    status: TraceStatus
     created_at: datetime
     evaluation: MultiAgentEvaluationDetailResponse | EvaluationDetailResponse | None = (
         None

@@ -18,9 +18,10 @@ import re
 from typing import Any
 
 from app.config import settings
+from app.evaluation.client_provider import get_default_rag_client
 from app.evaluation.json_utils import safe_parse_json_object
+from app.evaluation.llm_client import LLMClientError
 from app.evaluation.llm_protocol import LLMChatClient
-from app.evaluation.llm_client import LLMClientError, OpenAILLMClient
 from app.evaluation.prompts import (
     ANSWER_RELEVANCY_JSON_SCHEMA,
     ANSWER_RELEVANCY_SYSTEM_PROMPT,
@@ -482,7 +483,7 @@ async def compute_rag_metrics(
             "context_recall": float | None,
         }
     """
-    client = client or OpenAILLMClient()
+    client = client or get_default_rag_client()
     ctx = contexts or []
 
     # Run all independent metrics concurrently
