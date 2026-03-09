@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import logging
 import re
 
 from app.config import settings
+from app.evaluation.json_utils import safe_parse_json_object
 from app.evaluation.llm_client import LLMClientError, OpenAILLMClient
 from app.evaluation.prompts import (
     STAGE_2_JSON_SCHEMA,
@@ -32,6 +32,43 @@ _BOOL_FIELDS = ["is_off_topic", "is_deflection"]
 _REQUIRED_FIELDS = _FLOAT_FIELDS + _BOOL_FIELDS + ["reasoning_summary"]
 
 _MAX_STAGE_2_RETRIES = 3
+
+
+def _build_empty_result(
+    *,
+    reasoning_summary: str,
+    raw_response: dict[str, Any],
+) -> dict[str, Any]:
+    """Return a consistent fallback evaluation payload for skipped/failed runs."""
+    return {
+        "clarity": None,
+        "is_off_topic": None,
+        "completeness": None,
+        "coherence": None,
+        "helpfulness": None,
+        "is_deflection": None,
+        "overall_score": None,
+        "evaluation_confidence": None,
+        "reasoning_summary": reasoning_summary,
+        "disagreement_claims": [],
+        "stage_1_reasoning": None,
+        "raw_response": raw_response,
+        "model_used": f"{settings.stage_1_model} + {settings.stage_2_model}",
+        "prompt_version": settings.prompt_version,
+        "rubric_version": settings.rubric_version,
+        "answer_relevancy": None,
+        "faithfulness": None,
+        "hallucination_score": None,
+        "citation_check": None,
+        "hallucination_claims": [],
+        "completeness_key_points": [],
+        "context_precision": None,
+        "context_recall": None,
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "total_tokens": None,
+        "cost_usd": None,
+    }
 
 
 def _compute_cost(
@@ -207,31 +244,10 @@ async def evaluate_trace(
     client = OpenAILLMClient()
 
     if not client.is_enabled:
-        return {
-            "clarity": None,
-            "is_off_topic": None,
-            "completeness": None,
-            "coherence": None,
-            "helpfulness": None,
-            "is_deflection": None,
-            "overall_score": None,
-            "evaluation_confidence": None,
-            "reasoning_summary": "OPENAI_API_KEY not configured; evaluation skipped.",
-            "disagreement_claims": [],
-            "stage_1_reasoning": None,
-            "raw_response": {"skipped": True, "reason": "missing_openai_api_key"},
-            "model_used": f"{settings.stage_1_model} + {settings.stage_2_model}",
-            "prompt_version": settings.prompt_version,
-            "rubric_version": settings.rubric_version,
-            "answer_relevancy": None,
-            "faithfulness": None,
-            "hallucination_score": None,
-            "citation_check": None,
-            "hallucination_claims": [],
-            "completeness_key_points": [],
-            "context_precision": None,
-            "context_recall": None,
-        }
+        return _build_empty_result(
+            reasoning_summary="OPENAI_API_KEY not configured; evaluation skipped.",
+            raw_response={"skipped": True, "reason": "missing_openai_api_key"},
+        )
 
     try:
         import asyncio
@@ -396,63 +412,19 @@ async def evaluate_trace(
             ),
         }
     except LLMClientError as exc:
-        return {
-            "clarity": None,
-            "is_off_topic": None,
-            "completeness": None,
-            "coherence": None,
-            "helpfulness": None,
-            "is_deflection": None,
-            "overall_score": None,
-            "evaluation_confidence": None,
-            "reasoning_summary": f"Evaluation failed: {exc}",
-            "disagreement_claims": [],
-            "stage_1_reasoning": None,
-            "raw_response": {"failed": True, "reason": str(exc)},
-            "model_used": f"{settings.stage_1_model} + {settings.stage_2_model}",
-            "prompt_version": settings.prompt_version,
-            "rubric_version": settings.rubric_version,
-            "answer_relevancy": None,
-            "faithfulness": None,
-            "hallucination_score": None,
-            "citation_check": None,
-            "hallucination_claims": [],
-            "completeness_key_points": [],
-            "context_precision": None,
-            "context_recall": None,
-        }
+        return _build_empty_result(
+            reasoning_summary=f"Evaluation failed: {exc}",
+            raw_response={"failed": True, "reason": str(exc)},
+        )
 
 
 def _safe_parse_json(content: str) -> dict[str, Any]:
     """Best-effort extraction of a JSON object from model output."""
-    raw = (content or "").strip()
-    candidates: list[str] = [raw]
-
-    # Strip markdown code fences
-    if raw.startswith("```"):
-        lines = raw.splitlines()
-        if len(lines) >= 3 and lines[-1].strip().startswith("```"):
-            body = "\n".join(lines[1:-1]).strip()
-            if body:
-                candidates.insert(0, body)
-
-    # Extract outermost { ... }
-    start = raw.find("{")
-    end = raw.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        candidates.insert(0, raw[start : end + 1])
-
-    for candidate in candidates:
-        try:
-            parsed = json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(parsed, dict):
-            return _coerce_types(parsed)
-
-    return {
-        "reasoning_summary": "Stage 2 JSON parse failed",
-    }
+    return safe_parse_json_object(
+        content,
+        transform=_coerce_types,
+        fallback={"reasoning_summary": "Stage 2 JSON parse failed"},
+    )
 
 
 def _coerce_types(parsed: dict[str, Any]) -> dict[str, Any]:

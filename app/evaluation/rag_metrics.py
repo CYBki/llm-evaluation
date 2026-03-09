@@ -12,13 +12,13 @@ Six metrics computed independently from the two-stage rubric pipeline:
 
 from __future__ import annotations
 
-import json
 import logging
 import math
 import re
 from typing import Any
 
 from app.config import settings
+from app.evaluation.json_utils import safe_parse_json_object
 from app.evaluation.llm_client import LLMClientError, OpenAILLMClient
 from app.evaluation.prompts import (
     ANSWER_RELEVANCY_JSON_SCHEMA,
@@ -553,37 +553,4 @@ async def compute_rag_metrics(
 
 def _safe_parse(content: str) -> dict[str, Any]:
     """Best-effort JSON parse from LLM output."""
-    raw = (content or "").strip()
-
-    # Try direct parse
-    try:
-        parsed = json.loads(raw)
-        if isinstance(parsed, dict):
-            return parsed
-    except json.JSONDecodeError:
-        pass
-
-    # Strip markdown fences
-    if raw.startswith("```"):
-        lines = raw.splitlines()
-        if len(lines) >= 3 and lines[-1].strip().startswith("```"):
-            body = "\n".join(lines[1:-1]).strip()
-            try:
-                parsed = json.loads(body)
-                if isinstance(parsed, dict):
-                    return parsed
-            except json.JSONDecodeError:
-                pass
-
-    # Extract outermost { ... }
-    start = raw.find("{")
-    end = raw.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        try:
-            parsed = json.loads(raw[start : end + 1])
-            if isinstance(parsed, dict):
-                return parsed
-        except json.JSONDecodeError:
-            pass
-
-    return {}
+    return safe_parse_json_object(content)
