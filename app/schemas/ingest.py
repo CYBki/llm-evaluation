@@ -1,7 +1,8 @@
 from datetime import datetime
-from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator
+
+from app.schemas.validators import validate_https_webhook_url
 
 
 class TraceCreate(BaseModel):
@@ -19,20 +20,7 @@ class TraceCreate(BaseModel):
     @field_validator("webhook_url")
     @classmethod
     def validate_webhook_url(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
-        parsed = urlparse(v)
-        if parsed.scheme != "https":
-            raise ValueError("webhook_url must use https:// scheme")
-        if not parsed.hostname:
-            raise ValueError("webhook_url must contain a valid hostname")
-        # Reject bare IPs (require FQDN with at least one dot)
-        hostname = parsed.hostname
-        if hostname.replace(".", "").isdigit() or ":" in hostname:
-            raise ValueError("webhook_url must use a domain name, not an IP address")
-        if "." not in hostname:
-            raise ValueError("webhook_url must be a fully qualified domain name")
-        return v
+        return validate_https_webhook_url(v)
 
 
 class TraceIngestResponse(BaseModel):
@@ -52,19 +40,7 @@ class TraceBatchCreate(BaseModel):
     @field_validator("webhook_url")
     @classmethod
     def validate_webhook_url(cls, v: str | None) -> str | None:
-        if v is None:
-            return v
-        parsed = urlparse(v)
-        if parsed.scheme != "https":
-            raise ValueError("webhook_url must use https:// scheme")
-        if not parsed.hostname:
-            raise ValueError("webhook_url must contain a valid hostname")
-        hostname = parsed.hostname
-        if hostname.replace(".", "").isdigit() or ":" in hostname:
-            raise ValueError("webhook_url must use a domain name, not an IP address")
-        if "." not in hostname:
-            raise ValueError("webhook_url must be a fully qualified domain name")
-        return v
+        return validate_https_webhook_url(v)
 
 
 class TraceBatchIngestResponse(BaseModel):

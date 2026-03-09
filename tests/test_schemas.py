@@ -61,6 +61,22 @@ class TestTraceCreate:
         with pytest.raises(ValidationError):
             TraceCreate(question="Q?", answer="x" * 100001)
 
+    def test_non_https_webhook_rejected(self):
+        with pytest.raises(ValidationError):
+            TraceCreate(
+                question="Q?",
+                answer="A.",
+                webhook_url="http://example.com/webhook",
+            )
+
+    def test_ip_webhook_rejected(self):
+        with pytest.raises(ValidationError):
+            TraceCreate(
+                question="Q?",
+                answer="A.",
+                webhook_url="https://127.0.0.1/webhook",
+            )
+
 
 class TestTraceBatchCreate:
     def test_valid(self):
@@ -75,3 +91,10 @@ class TestTraceBatchCreate:
         traces = [TraceCreate(question="Q?", answer="A.") for _ in range(101)]
         with pytest.raises(ValidationError):
             TraceBatchCreate(traces=traces)
+
+    def test_batch_webhook_uses_same_validation_rules(self):
+        with pytest.raises(ValidationError):
+            TraceBatchCreate(
+                traces=[TraceCreate(question="Q?", answer="A.")],
+                webhook_url="https://localhost/webhook",
+            )
