@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import Any
 
 import logging
@@ -68,6 +70,143 @@ def _build_empty_result(
         "completion_tokens": None,
         "total_tokens": None,
         "cost_usd": None,
+    }
+
+
+async def _run_stage_1(
+    client: OpenAILLMClient,
+    question: str,
+    answer: str,
+    context_items: list[str],
+):
+    """Run Stage 1 rubric reasoning and return the raw LLM response."""
+    return await client.chat_completion(
+        model=settings.stage_1_model,
+        system_prompt=STAGE_1_SYSTEM_PROMPT,
+        user_prompt=build_stage_1_user_prompt(question, answer, context_items),
+        max_completion_tokens=4096,
+    )
+
+
+async def _run_stage_2_with_retries(
+    client: OpenAILLMClient,
+    stage_1_content: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]], int, int]:
+    """Run Stage 2 JSON conversion with repair retries and regex fallback."""
+    stage2_prompt_tokens = 0
+    stage2_completion_tokens = 0
+    parsed: dict[str, Any] = {}
+    raw_responses: list[dict[str, Any]] = []
+    last_output = ""
+
+    for attempt in range(_MAX_STAGE_2_RETRIES):
+        if attempt == 0:
+            s2_resp = await client.chat_completion(
+                model=settings.stage_2_model,
+                system_prompt=STAGE_2_SYSTEM_PROMPT,
+                user_prompt=build_stage_2_user_prompt(stage_1_content),
+                max_completion_tokens=2048,
+                json_schema=STAGE_2_JSON_SCHEMA,
+            )
+        else:
+            validation_errors = _describe_validation_errors(parsed)
+            logger.info(
+                "Stage 2 retry %d/%d – errors: %s",
+                attempt + 1,
+                _MAX_STAGE_2_RETRIES,
+                validation_errors,
+            )
+            s2_resp = await client.chat_completion(
+                model=settings.stage_2_model,
+                system_prompt=STAGE_2_REPAIR_SYSTEM_PROMPT,
+                user_prompt=build_stage_2_repair_user_prompt(
+                    last_output,
+                    stage_1_content,
+                    validation_errors,
+                ),
+                max_completion_tokens=2048,
+                json_schema=STAGE_2_JSON_SCHEMA,
+            )
+
+        last_output = s2_resp.content
+        raw_responses.append(s2_resp.raw)
+        parsed = _safe_parse_json(s2_resp.content)
+        stage2_prompt_tokens += s2_resp.prompt_tokens
+        stage2_completion_tokens += s2_resp.completion_tokens
+
+        if not _validate_schema(parsed):
+            logger.info("Stage 2 succeeded on attempt %d", attempt + 1)
+            break
+    else:
+        logger.warning("Stage 2 LLM retries exhausted, trying regex fallback")
+        fallback = _regex_extract_scores(stage_1_content)
+        if fallback.get("overall_score") is not None:
+            parsed = fallback
+
+    return parsed, raw_responses, stage2_prompt_tokens, stage2_completion_tokens
+
+
+def _build_success_result(
+    *,
+    parsed: dict[str, Any],
+    rag_results: dict[str, Any],
+    stage_1_content: str,
+    raw_responses: list[dict[str, Any]],
+    stage1_prompt_tokens: int,
+    stage1_completion_tokens: int,
+    stage2_prompt_tokens: int,
+    stage2_completion_tokens: int,
+) -> dict[str, Any]:
+    """Assemble the final evaluation payload from stage and RAG outputs."""
+    is_off_topic_value = _coerce_off_topic_flag(
+        parsed.get("is_off_topic"),
+        rag_results.get("answer_relevancy"),
+        parsed.get("helpfulness"),
+    )
+    prompt_tokens = stage1_prompt_tokens + stage2_prompt_tokens
+    completion_tokens = stage1_completion_tokens + stage2_completion_tokens
+
+    return {
+        "clarity": parsed.get("clarity"),
+        "is_off_topic": is_off_topic_value,
+        "completeness": rag_results.get("completeness"),
+        "coherence": parsed.get("coherence"),
+        "helpfulness": parsed.get("helpfulness"),
+        "is_deflection": parsed.get("is_deflection"),
+        "overall_score": _compute_overall_score(
+            parsed,
+            rag_results,
+            is_deflection=bool(parsed.get("is_deflection")),
+            is_off_topic=is_off_topic_value,
+            has_contradiction=_has_contradicted_claims(
+                rag_results.get("hallucination_claims")
+            ),
+        ),
+        "evaluation_confidence": parsed.get("evaluation_confidence"),
+        "reasoning_summary": parsed.get("reasoning_summary"),
+        "disagreement_claims": rag_results.get("hallucination_claims", []),
+        "stage_1_reasoning": stage_1_content,
+        "raw_response": raw_responses,
+        "model_used": f"{settings.stage_1_model} + {settings.stage_2_model}",
+        "prompt_version": settings.prompt_version,
+        "rubric_version": settings.rubric_version,
+        "answer_relevancy": rag_results.get("answer_relevancy"),
+        "faithfulness": rag_results.get("faithfulness"),
+        "hallucination_score": rag_results.get("hallucination_score"),
+        "citation_check": rag_results.get("citation_check"),
+        "hallucination_claims": rag_results.get("hallucination_claims", []),
+        "completeness_key_points": rag_results.get("completeness_key_points", []),
+        "context_precision": rag_results.get("context_precision"),
+        "context_recall": rag_results.get("context_recall"),
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+        "cost_usd": _compute_cost(
+            stage1_prompt_tokens,
+            stage1_completion_tokens,
+            stage2_prompt_tokens,
+            stage2_completion_tokens,
+        ),
     }
 
 
@@ -250,10 +389,7 @@ async def evaluate_trace(
         )
 
     try:
-        import asyncio
-        import time as _time
-
-        _t0 = _time.perf_counter()
+        t0 = time.perf_counter()
 
         # ── Parallel pipeline: Stage 1→2 chain runs alongside RAG metrics ──
         # Stage 2 only needs Stage 1 output, NOT RAG results.
@@ -264,12 +400,7 @@ async def evaluate_trace(
         #            Total = max(15, 25) = 25s  (was 35s)
 
         stage_1_task = asyncio.create_task(
-            client.chat_completion(
-                model=settings.stage_1_model,
-                system_prompt=STAGE_1_SYSTEM_PROMPT,
-                user_prompt=build_stage_1_user_prompt(question, answer, context_items),
-                max_completion_tokens=4096,
-            )
+            _run_stage_1(client, question, answer, context_items)
         )
         rag_metrics_task = asyncio.create_task(
             compute_rag_metrics(question, answer, contexts, ground_truth)
@@ -277,72 +408,23 @@ async def evaluate_trace(
 
         # Await Stage 1 first (need it for Stage 2)
         stage_1 = await stage_1_task
-        _t1 = _time.perf_counter()
-        logger.info("Timing — Stage 1: %.1fs", _t1 - _t0)
+        t1 = time.perf_counter()
+        logger.info("Timing — Stage 1: %.1fs", t1 - t0)
 
         # ── Token accumulator (per-stage for accurate cost) ──
         stage1_prompt_tokens = stage_1.prompt_tokens
         stage1_completion_tokens = stage_1.completion_tokens
 
-        # ── Stage 2: start IMMEDIATELY after Stage 1 (parallel with RAG) ──
-        stage2_prompt_tokens = 0
-        stage2_completion_tokens = 0
-        parsed: dict[str, Any] = {}
-        raw_responses: list[dict[str, Any]] = []
-        last_output = ""
+        parsed, raw_responses, stage2_prompt_tokens, stage2_completion_tokens = (
+            await _run_stage_2_with_retries(client, stage_1.content)
+        )
 
-        for attempt in range(_MAX_STAGE_2_RETRIES):
-            if attempt == 0:
-                s2_resp = await client.chat_completion(
-                    model=settings.stage_2_model,
-                    system_prompt=STAGE_2_SYSTEM_PROMPT,
-                    user_prompt=build_stage_2_user_prompt(stage_1.content),
-                    max_completion_tokens=2048,
-                    json_schema=STAGE_2_JSON_SCHEMA,
-                )
-            else:
-                validation_errors = _describe_validation_errors(parsed)
-                logger.info(
-                    "Stage 2 retry %d/%d – errors: %s",
-                    attempt + 1,
-                    _MAX_STAGE_2_RETRIES,
-                    validation_errors,
-                )
-                s2_resp = await client.chat_completion(
-                    model=settings.stage_2_model,
-                    system_prompt=STAGE_2_REPAIR_SYSTEM_PROMPT,
-                    user_prompt=build_stage_2_repair_user_prompt(
-                        last_output, stage_1.content, validation_errors
-                    ),
-                    max_completion_tokens=2048,
-                    json_schema=STAGE_2_JSON_SCHEMA,
-                )
-
-            last_output = s2_resp.content
-            raw_responses.append(s2_resp.raw)
-            parsed = _safe_parse_json(s2_resp.content)
-
-            # Accumulate Stage 2 tokens (same pricing tier as RAG metrics)
-            stage2_prompt_tokens += s2_resp.prompt_tokens
-            stage2_completion_tokens += s2_resp.completion_tokens
-
-            errors = _validate_schema(parsed)
-            if not errors:
-                logger.info("Stage 2 succeeded on attempt %d", attempt + 1)
-                break
-        else:
-            # All LLM retries exhausted – try deterministic regex fallback
-            logger.warning("Stage 2 LLM retries exhausted, trying regex fallback")
-            fallback = _regex_extract_scores(stage_1.content)
-            if fallback.get("overall_score") is not None:
-                parsed = fallback
-
-        _t2 = _time.perf_counter()
-        logger.info("Timing — Stage 2: %.1fs (started right after Stage 1)", _t2 - _t1)
+        t2 = time.perf_counter()
+        logger.info("Timing — Stage 2: %.1fs (started right after Stage 1)", t2 - t1)
 
         # ── Now await RAG metrics (may already be done) ──
         rag_results = await rag_metrics_task
-        _t3 = _time.perf_counter()
+        t3 = time.perf_counter()
 
         # Add RAG token usage
         stage2_prompt_tokens += rag_results.get("_prompt_tokens", 0)
@@ -351,66 +433,21 @@ async def evaluate_trace(
         logger.info(
             "Timing — RAG metrics: %.1fs | Pipeline total: %.1fs "
             "(Stage1: %.1fs + Stage2: %.1fs parallel with RAG)",
-            _t3 - _t0,
-            _t3 - _t0,
-            _t1 - _t0,
-            _t2 - _t1,
+            t3 - t0,
+            t3 - t0,
+            t1 - t0,
+            t2 - t1,
         )
-
-        is_off_topic_value = _coerce_off_topic_flag(
-            parsed.get("is_off_topic"),
-            rag_results.get("answer_relevancy"),
-            parsed.get("helpfulness"),
+        return _build_success_result(
+            parsed=parsed,
+            rag_results=rag_results,
+            stage_1_content=stage_1.content,
+            raw_responses=raw_responses,
+            stage1_prompt_tokens=stage1_prompt_tokens,
+            stage1_completion_tokens=stage1_completion_tokens,
+            stage2_prompt_tokens=stage2_prompt_tokens,
+            stage2_completion_tokens=stage2_completion_tokens,
         )
-
-        return {
-            "clarity": parsed.get("clarity"),
-            "is_off_topic": is_off_topic_value,
-            "completeness": rag_results.get("completeness"),
-            "coherence": parsed.get("coherence"),
-            "helpfulness": parsed.get("helpfulness"),
-            "is_deflection": parsed.get("is_deflection"),
-            "overall_score": _compute_overall_score(
-                parsed,
-                rag_results,
-                is_deflection=bool(parsed.get("is_deflection")),
-                is_off_topic=is_off_topic_value,
-                has_contradiction=_has_contradicted_claims(
-                    rag_results.get("hallucination_claims")
-                ),
-            ),
-            "evaluation_confidence": parsed.get("evaluation_confidence"),
-            "reasoning_summary": parsed.get("reasoning_summary"),
-            "disagreement_claims": rag_results.get("hallucination_claims", []),
-            "stage_1_reasoning": stage_1.content,
-            "raw_response": raw_responses,
-            "model_used": f"{settings.stage_1_model} + {settings.stage_2_model}",
-            "prompt_version": settings.prompt_version,
-            "rubric_version": settings.rubric_version,
-            "answer_relevancy": rag_results.get("answer_relevancy"),
-            "faithfulness": rag_results.get("faithfulness"),
-            "hallucination_score": rag_results.get("hallucination_score"),
-            "citation_check": rag_results.get("citation_check"),
-            "hallucination_claims": rag_results.get("hallucination_claims", []),
-            "completeness_key_points": rag_results.get("completeness_key_points", []),
-            "context_precision": rag_results.get("context_precision"),
-            "context_recall": rag_results.get("context_recall"),
-            # Token usage & cost (per-stage for accurate pricing)
-            "prompt_tokens": stage1_prompt_tokens + stage2_prompt_tokens,
-            "completion_tokens": stage1_completion_tokens + stage2_completion_tokens,
-            "total_tokens": (
-                stage1_prompt_tokens
-                + stage2_prompt_tokens
-                + stage1_completion_tokens
-                + stage2_completion_tokens
-            ),
-            "cost_usd": _compute_cost(
-                stage1_prompt_tokens,
-                stage1_completion_tokens,
-                stage2_prompt_tokens,
-                stage2_completion_tokens,
-            ),
-        }
     except LLMClientError as exc:
         return _build_empty_result(
             reasoning_summary=f"Evaluation failed: {exc}",
