@@ -14,7 +14,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.evaluation import evaluate_trace
 from app.models.evaluation import EvaluationResult, StepEvaluationResult
-from app.models.trace import Trace
+from app.models.trace import Trace, TraceStatus
 from app.services.webhook_service import deliver_webhook
 
 logger = logging.getLogger(__name__)
@@ -245,7 +245,7 @@ async def _evaluate_trace_async(trace_id: str) -> None:
                 cached.trace_id,
             )
             _copy_evaluation(cached, evaluation)
-            trace.status = "completed"
+            trace.status = TraceStatus.COMPLETED.value
             db.add(evaluation)
             db.add(trace)
             db.commit()
@@ -259,7 +259,7 @@ async def _evaluate_trace_async(trace_id: str) -> None:
             )
         except Exception:
             logger.exception("Evaluation failed for trace %s", trace_id)
-            trace.status = "failed"
+            trace.status = TraceStatus.FAILED.value
             db.add(trace)
             db.commit()
             return
@@ -342,7 +342,11 @@ async def _evaluate_trace_async(trace_id: str) -> None:
                     avg_step,
                 )
 
-        trace.status = "completed" if _is_successful_result(result) else "failed"
+        trace.status = (
+            TraceStatus.COMPLETED.value
+            if _is_successful_result(result)
+            else TraceStatus.FAILED.value
+        )
 
         db.add(evaluation)
         db.add(trace)

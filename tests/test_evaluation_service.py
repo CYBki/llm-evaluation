@@ -1,6 +1,14 @@
 """Unit tests for evaluation_service helper functions."""
 
+from app.models.trace import TraceStatus
 from app.services.evaluation_service import _is_successful_result
+
+
+class TestTraceStatus:
+    def test_expected_values(self):
+        assert TraceStatus.PENDING.value == "pending"
+        assert TraceStatus.COMPLETED.value == "completed"
+        assert TraceStatus.FAILED.value == "failed"
 
 
 class TestIsSuccessfulResult:

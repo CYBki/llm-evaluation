@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.models.trace import Trace
+from app.models.trace import Trace, TraceStatus
 from app.models.user import User
 from app.schemas.ingest import TraceCreate
 from app.services.evaluation_service import (
@@ -18,7 +18,7 @@ def create_trace(db: Session, user: User, payload: TraceCreate) -> Trace:
         ground_truth=payload.ground_truth,
         meta=payload.metadata,
         webhook_url=payload.webhook_url,
-        status="pending",
+        status=TraceStatus.PENDING.value,
     )
     db.add(trace)
     db.commit()
@@ -43,7 +43,7 @@ def create_traces_batch(
             ground_truth=payload.ground_truth,
             meta=payload.metadata,
             webhook_url=payload.webhook_url,
-            status="pending",
+            status=TraceStatus.PENDING.value,
         )
         db.add(trace)
         traces.append(trace)
