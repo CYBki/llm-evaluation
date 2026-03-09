@@ -19,6 +19,40 @@ from app.services.webhook_service import deliver_webhook
 
 logger = logging.getLogger(__name__)
 
+_COMMON_RESULT_FIELD_MAP = (
+    ("clarity", "clarity"),
+    ("is_off_topic", "is_off_topic"),
+    ("completeness", "completeness"),
+    ("coherence", "coherence"),
+    ("helpfulness", "helpfulness"),
+    ("is_deflection", "is_deflection"),
+    ("overall_score", "overall_score"),
+    ("evaluation_confidence", "evaluation_confidence"),
+    ("reasoning_summary", "reasoning_summary"),
+    ("answer_relevancy", "answer_relevancy"),
+    ("faithfulness", "faithfulness"),
+    ("hallucination_score", "hallucination_score"),
+    ("citation_check", "citation_check"),
+    ("faithfulness_claims", "hallucination_claims"),
+    ("hallucination_claims", "hallucination_claims"),
+    ("completeness_key_points", "completeness_key_points"),
+    ("context_precision", "context_precision"),
+    ("context_recall", "context_recall"),
+    ("model_used", "model_used"),
+)
+
+_EVALUATION_ONLY_FIELD_MAP = (
+    ("disagreement_claims", "disagreement_claims"),
+    ("stage_1_reasoning", "stage_1_reasoning"),
+    ("raw_response", "raw_response"),
+    ("prompt_version", "prompt_version"),
+    ("rubric_version", "rubric_version"),
+    ("prompt_tokens", "prompt_tokens"),
+    ("completion_tokens", "completion_tokens"),
+    ("total_tokens", "total_tokens"),
+    ("cost_usd", "cost_usd"),
+)
+
 
 @contextmanager
 def _get_db() -> Generator[Session, None, None]:
@@ -99,63 +133,28 @@ def wait_for_batch_threads(timeout: float = 60.0) -> None:
     _active_batch_threads.clear()
 
 
+def _apply_result_fields(
+    target: EvaluationResult | StepEvaluationResult,
+    result: dict,
+    field_map: tuple[tuple[str, str], ...],
+) -> None:
+    """Copy selected values from result dict onto a target ORM object.
+
+    Each tuple is (target_attr, result_key).
+    """
+    for target_attr, result_key in field_map:
+        setattr(target, target_attr, result.get(result_key))
+
+
 def _apply_result_to_evaluation(evaluation: EvaluationResult, result: dict) -> None:
     """Map eval result dict fields onto an EvaluationResult ORM object."""
-    evaluation.clarity = result.get("clarity")
-    evaluation.is_off_topic = result.get("is_off_topic")
-    evaluation.completeness = result.get("completeness")
-    evaluation.coherence = result.get("coherence")
-    evaluation.helpfulness = result.get("helpfulness")
-    evaluation.is_deflection = result.get("is_deflection")
-    evaluation.overall_score = result.get("overall_score")
-    evaluation.evaluation_confidence = result.get("evaluation_confidence")
-    evaluation.reasoning_summary = result.get("reasoning_summary")
-    evaluation.disagreement_claims = result.get("disagreement_claims")
-    evaluation.stage_1_reasoning = result.get("stage_1_reasoning")
-    evaluation.raw_response = result.get("raw_response")
-    evaluation.model_used = result.get("model_used")
-    evaluation.prompt_version = result.get("prompt_version")
-    evaluation.rubric_version = result.get("rubric_version")
-    # RAG-specific
-    evaluation.answer_relevancy = result.get("answer_relevancy")
-    evaluation.faithfulness = result.get("faithfulness")
-    evaluation.hallucination_score = result.get("hallucination_score")
-    evaluation.citation_check = result.get("citation_check")
-    evaluation.faithfulness_claims = result.get(
-        "hallucination_claims"
-    )  # faithfulness derived from same claims
-    evaluation.hallucination_claims = result.get("hallucination_claims")
-    evaluation.completeness_key_points = result.get("completeness_key_points")
-    evaluation.context_precision = result.get("context_precision")
-    evaluation.context_recall = result.get("context_recall")
-    # Token usage & cost
-    evaluation.prompt_tokens = result.get("prompt_tokens")
-    evaluation.completion_tokens = result.get("completion_tokens")
-    evaluation.total_tokens = result.get("total_tokens")
-    evaluation.cost_usd = result.get("cost_usd")
+    _apply_result_fields(evaluation, result, _COMMON_RESULT_FIELD_MAP)
+    _apply_result_fields(evaluation, result, _EVALUATION_ONLY_FIELD_MAP)
 
 
 def _apply_result_to_step(step_eval: StepEvaluationResult, result: dict) -> None:
     """Map eval result dict fields onto a StepEvaluationResult ORM object."""
-    step_eval.clarity = result.get("clarity")
-    step_eval.is_off_topic = result.get("is_off_topic")
-    step_eval.completeness = result.get("completeness")
-    step_eval.coherence = result.get("coherence")
-    step_eval.helpfulness = result.get("helpfulness")
-    step_eval.is_deflection = result.get("is_deflection")
-    step_eval.overall_score = result.get("overall_score")
-    step_eval.evaluation_confidence = result.get("evaluation_confidence")
-    step_eval.reasoning_summary = result.get("reasoning_summary")
-    step_eval.answer_relevancy = result.get("answer_relevancy")
-    step_eval.faithfulness = result.get("faithfulness")
-    step_eval.hallucination_score = result.get("hallucination_score")
-    step_eval.citation_check = result.get("citation_check")
-    step_eval.faithfulness_claims = result.get("hallucination_claims")
-    step_eval.hallucination_claims = result.get("hallucination_claims")
-    step_eval.completeness_key_points = result.get("completeness_key_points")
-    step_eval.context_precision = result.get("context_precision")
-    step_eval.context_recall = result.get("context_recall")
-    step_eval.model_used = result.get("model_used")
+    _apply_result_fields(step_eval, result, _COMMON_RESULT_FIELD_MAP)
 
 
 def _compute_content_hash(
