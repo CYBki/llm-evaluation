@@ -9,6 +9,7 @@ import re
 
 from app.config import settings
 from app.evaluation.json_utils import safe_parse_json_object
+from app.evaluation.llm_protocol import LLMChatClient
 from app.evaluation.llm_client import LLMClientError, OpenAILLMClient
 from app.evaluation.prompts import (
     STAGE_2_JSON_SCHEMA,
@@ -74,7 +75,7 @@ def _build_empty_result(
 
 
 async def _run_stage_1(
-    client: OpenAILLMClient,
+    client: LLMChatClient,
     question: str,
     answer: str,
     context_items: list[str],
@@ -89,7 +90,7 @@ async def _run_stage_1(
 
 
 async def _run_stage_2_with_retries(
-    client: OpenAILLMClient,
+    client: LLMChatClient,
     stage_1_content: str,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], int, int]:
     """Run Stage 2 JSON conversion with repair retries and regex fallback."""
@@ -378,8 +379,8 @@ async def evaluate_trace(
     answer: str,
     contexts: list[str] | None,
     ground_truth: str | None = None,
-    client: OpenAILLMClient | None = None,
-    rag_client: OpenAILLMClient | None = None,
+    client: LLMChatClient | None = None,
+    rag_client: LLMChatClient | None = None,
 ) -> dict[str, Any]:
     context_items = contexts or []
     client = client or OpenAILLMClient()

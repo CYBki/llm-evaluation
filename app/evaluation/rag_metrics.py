@@ -19,6 +19,7 @@ from typing import Any
 
 from app.config import settings
 from app.evaluation.json_utils import safe_parse_json_object
+from app.evaluation.llm_protocol import LLMChatClient
 from app.evaluation.llm_client import LLMClientError, OpenAILLMClient
 from app.evaluation.prompts import (
     ANSWER_RELEVANCY_JSON_SCHEMA,
@@ -115,7 +116,7 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
 
 
 async def compute_answer_relevancy(
-    client: OpenAILLMClient,
+    client: LLMChatClient,
     question: str,
     answer: str,
     contexts: list[str],
@@ -169,7 +170,7 @@ async def compute_answer_relevancy(
 
 
 async def compute_hallucination_rubric(
-    client: OpenAILLMClient,
+    client: LLMChatClient,
     answer: str,
     contexts: list[str],
 ) -> dict[str, Any]:
@@ -254,7 +255,7 @@ def has_citations(answer: str) -> bool:
 
 
 async def compute_citation_check(
-    client: OpenAILLMClient,
+    client: LLMChatClient,
     answer: str,
     contexts: list[str],
 ) -> float | None:
@@ -303,7 +304,7 @@ async def compute_citation_check(
 
 
 async def compute_completeness(
-    client: OpenAILLMClient,
+    client: LLMChatClient,
     question: str,
     answer: str,
     contexts: list[str],
@@ -358,7 +359,7 @@ async def compute_completeness(
 
 
 async def compute_context_precision(
-    client: OpenAILLMClient,
+    client: LLMChatClient,
     question: str,
     contexts: list[str],
 ) -> float | None:
@@ -405,7 +406,7 @@ async def compute_context_precision(
 
 
 async def compute_context_recall(
-    client: OpenAILLMClient,
+    client: LLMChatClient,
     question: str,
     contexts: list[str],
     ground_truth: str | None = None,
@@ -463,7 +464,7 @@ async def compute_rag_metrics(
     answer: str,
     contexts: list[str] | None,
     ground_truth: str | None = None,
-    client: OpenAILLMClient | None = None,
+    client: LLMChatClient | None = None,
 ) -> dict[str, Any]:
     """
     Compute all 6 RAG metrics and return a flat dict.
