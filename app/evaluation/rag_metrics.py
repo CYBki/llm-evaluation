@@ -463,6 +463,7 @@ async def compute_rag_metrics(
     answer: str,
     contexts: list[str] | None,
     ground_truth: str | None = None,
+    client: OpenAILLMClient | None = None,
 ) -> dict[str, Any]:
     """
     Compute all 6 RAG metrics and return a flat dict.
@@ -480,7 +481,7 @@ async def compute_rag_metrics(
             "context_recall": float | None,
         }
     """
-    client = OpenAILLMClient()
+    client = client or OpenAILLMClient()
     ctx = contexts or []
 
     # Run all independent metrics concurrently

@@ -378,9 +378,11 @@ async def evaluate_trace(
     answer: str,
     contexts: list[str] | None,
     ground_truth: str | None = None,
+    client: OpenAILLMClient | None = None,
+    rag_client: OpenAILLMClient | None = None,
 ) -> dict[str, Any]:
     context_items = contexts or []
-    client = OpenAILLMClient()
+    client = client or OpenAILLMClient()
 
     if not client.is_enabled:
         return _build_empty_result(
@@ -403,7 +405,13 @@ async def evaluate_trace(
             _run_stage_1(client, question, answer, context_items)
         )
         rag_metrics_task = asyncio.create_task(
-            compute_rag_metrics(question, answer, contexts, ground_truth)
+            compute_rag_metrics(
+                question,
+                answer,
+                contexts,
+                ground_truth,
+                client=rag_client,
+            )
         )
 
         # Await Stage 1 first (need it for Stage 2)
