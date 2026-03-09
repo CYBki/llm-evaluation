@@ -53,6 +53,19 @@ _EVALUATION_ONLY_FIELD_MAP = (
     ("cost_usd", "cost_usd"),
 )
 
+_CACHE_ONLY_FIELDS = (
+    "content_hash",
+    "evaluation_duration_ms",
+)
+
+_CACHED_EVALUATION_FIELDS = tuple(
+    dict.fromkeys(
+        [target_attr for target_attr, _ in _COMMON_RESULT_FIELD_MAP]
+        + [target_attr for target_attr, _ in _EVALUATION_ONLY_FIELD_MAP]
+        + list(_CACHE_ONLY_FIELDS)
+    )
+)
+
 
 @contextmanager
 def _get_db() -> Generator[Session, None, None]:
@@ -174,38 +187,7 @@ def _compute_content_hash(
 
 def _copy_evaluation(source: EvaluationResult, target: EvaluationResult) -> None:
     """Copy all metric fields from a cached evaluation to a new one."""
-    for col in (
-        "clarity",
-        "is_off_topic",
-        "completeness",
-        "coherence",
-        "helpfulness",
-        "is_deflection",
-        "overall_score",
-        "evaluation_confidence",
-        "reasoning_summary",
-        "disagreement_claims",
-        "stage_1_reasoning",
-        "raw_response",
-        "model_used",
-        "prompt_version",
-        "rubric_version",
-        "answer_relevancy",
-        "faithfulness",
-        "hallucination_score",
-        "citation_check",
-        "faithfulness_claims",
-        "hallucination_claims",
-        "completeness_key_points",
-        "context_precision",
-        "context_recall",
-        "content_hash",
-        "prompt_tokens",
-        "completion_tokens",
-        "total_tokens",
-        "cost_usd",
-        "evaluation_duration_ms",
-    ):
+    for col in _CACHED_EVALUATION_FIELDS:
         setattr(target, col, getattr(source, col))
 
 
