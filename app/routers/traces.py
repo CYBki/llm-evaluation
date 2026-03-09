@@ -8,7 +8,7 @@ from app.middleware.auth import get_current_user
 from app.models.trace import Trace
 from app.models.user import User
 from app.metrics.definitions import build_evaluation_commentary, get_verdict
-from app.schemas.ingest import (
+from app.schemas.trace import (
     DetailsResponse,
     EvaluationDetailResponse,
     EvaluationResponse,
