@@ -13,6 +13,7 @@ ENV/
 .env
 .env.*
 !.env.example
+!.env.prod.template
 
 # pytest
 .pytest_cache/

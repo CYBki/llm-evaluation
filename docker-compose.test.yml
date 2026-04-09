@@ -1,0 +1,29 @@
+# ============================================================================
+# Docker Compose - Test Overlay
+# ============================================================================
+# Kullanım: docker-compose -f docker-compose.yml -f docker-compose.test.yml up
+# ============================================================================
+
+services:
+  migrate:
+    env_file:
+      - .env.test
+
+  api:
+    env_file:
+      - .env.test
+    command: bash scripts/start_api.sh  # Reload mode yok
+    restart: "no"
+
+  worker:
+    env_file:
+      - .env.test
+    restart: "no"
+
+  redis:
+    restart: "no"
+
+  db:
+    restart: "no"
+    environment:
+      POSTGRES_DB: rageval_test

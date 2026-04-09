@@ -1,7 +1,7 @@
 # RAG Eval API — Sistem Dokümantasyonu
 
-**Tarih:** 10 Mart 2026  
-**Durum:** Kaynak gerçeklik dokümanı  
+**Tarih:** 09 Nisan 2026 (Son güncelleme: Production deployment bölümü eklendi)
+**Durum:** Kaynak gerçeklik dokümanı
 **Kapsam:** Bu doküman yalnızca kodda gerçekten çalışan özellikleri anlatır.
 
 ---
@@ -39,6 +39,18 @@
 15. [Çalıştırma ve Ortamlar](#15-çalıştırma-ve-ortamlar)
 16. [Testler ve Doğrulama](#16-testler-ve-doğrulama)
 17. [Bilinen Sınırlar](#17-bilinen-sınırlar)
+18. [Production Deployment Architecture](#18-production-deployment-architecture)
+   - [18.1 Ortam Stratejisi](#181-ortam-stratejisi-environment-strategy)
+   - [18.2 Environment Variables](#182-environment-variables-ortam-değişkenleri)
+   - [18.3 Docker Compose Overlay Pattern](#183-docker-compose-overlay-pattern)
+   - [18.4 Nginx Reverse Proxy](#184-nginx-reverse-proxy)
+   - [18.5 Resource Limits](#185-resource-limits)
+   - [18.6 Deployment Komutları](#186-deployment-komutları)
+   - [18.7 Güvenlik Özellikleri](#187-güvenlik-özellikleri)
+   - [18.8 Monitoring ve Debugging](#188-monitoring-ve-debugging)
+   - [18.9 Backup ve Restore](#189-backup-ve-restore)
+   - [18.10 Production Checklist](#1810-production-checklist)
+   - [18.11 Deployment Akışı Özeti](#1811-deployment-akışı-özeti)
 
 ---
 
@@ -2078,6 +2090,710 @@ Bu testler özellikle şu alanları kapsar:
 5. `specificity` legacy kolondur; aktif ürün metriği olarak ele alınmamalıdır.
 6. `ground_truth` aktif olarak kullanılmaktadır; yalnızca gelecek planı değildir.
 7. SDK klasöründe yardımcı kod vardır, fakat paketlenmiş resmi bir `pip install` SDK yüzeyi bu repoda tanımlı değildir.
+
+---
+
+## 18. Production Deployment Architecture
+
+Bu bölüm, sistemin production ortamına nasıl deploy edileceğini, environment yönetimini, Docker Compose overlay pattern'ini ve Nginx reverse proxy konfigürasyonunu detaylı olarak açıklar.
+
+### 18.1 Ortam Stratejisi (Environment Strategy)
+
+Sistem **3 farklı ortam** için yapılandırılmıştır:
+
+#### Development (Geliştirme)
+- **Amaç**: Yerel geliştirme, hot-reload, debug
+- **Env dosyası**: `.env.dev`
+- **Docker Compose**: `docker-compose.yml` + `docker-compose.dev.yml`
+- **Özellikler**:
+  - Hot-reload aktif (kod değişince otomatik yeniden başlar)
+  - Tüm portlar açık (DB: 5432, Redis: 6379, API: 8000)
+  - Restart policy: `no` (manuel kontrol)
+  - Database: `rageval_dev`
+  - Evaluation mode: `sync`
+
+#### Test (CI/CD)
+- **Amaç**: Otomatik testler, izole test ortamı
+- **Env dosyası**: `.env.test`
+- **Docker Compose**: `docker-compose.yml` + `docker-compose.test.yml`
+- **Özellikler**:
+  - Hot-reload kapalı (sabit kod test edilir)
+  - Portlar kapalı (sadece internal iletişim)
+  - Restart policy: `no` (test bitince dursun)
+  - Database: `rageval_test`
+  - Mock/test API key'leri
+
+#### Production (Canlı)
+- **Amaç**: Gerçek kullanıcılar, 7/24 çalışma, güvenlik
+- **Env dosyası**: `.env.prod` (GİZLİ - git'e eklenmez)
+- **Docker Compose**: `docker-compose.yml` + `docker-compose.prod.yml`
+- **Özellikler**:
+  - Gunicorn web server (multi-worker)
+  - Nginx reverse proxy (tek URL yönetimi)
+  - Network izolasyonu (internal/external)
+  - Resource limits (CPU/RAM)
+  - Auto-restart policy: `unless-stopped`
+  - Health checks aktif
+  - Database: `rageval_prod`
+  - Evaluation mode: `async` (Celery background jobs)
+
+---
+
+### 18.2 Environment Variables (Ortam Değişkenleri)
+
+Tüm ortamlarda **aynı değişkenler** kullanılır, ancak **farklı değerlerle**:
+
+#### 18.2.1 Dosya Hiyerarşisi
+
+```
+.env.example          → Master şablon (tüm değişkenlerin listesi)
+.env.dev              → Development değerleri
+.env.test             → Test değerleri
+.env.prod             → Production değerleri (GİZLİ)
+.env.prod.template    → Production şablonu (git'te)
+```
+
+#### 18.2.2 Kritik Environment Variables
+
+**Database:**
+```bash
+DATABASE_URL=postgresql+psycopg2://user:password@host:5432/dbname
+# Dev:  postgresql+psycopg2://postgres:postgres@db:5432/rageval_dev
+# Test: postgresql+psycopg2://postgres:postgres@db:5432/rageval_test
+# Prod: postgresql+psycopg2://prod_user:STRONG_PASSWORD@db:5432/rageval_prod
+```
+
+**Redis (Caching & Job Queue):**
+```bash
+REDIS_URL=redis://redis:6379/0
+CELERY_BROKER_URL=redis://redis:6379/0
+CELERY_RESULT_BACKEND=redis://redis:6379/1
+```
+
+**OpenAI API:**
+```bash
+OPENAI_API_KEY=sk-xxx...
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_TIMEOUT_SECONDS=120.0
+STAGE_1_MODEL=gpt-5.2
+STAGE_2_MODEL=gpt-4o-mini
+RAG_METRICS_MODEL=gpt-5-mini
+```
+
+**Evaluation Mode:**
+```bash
+# Dev/Test: sync (request gelir → evaluation çalışır → sonuç döner)
+# Prod: async (request gelir → job queue'ya ekle → hemen cevap dön)
+EVALUATION_MODE=sync|async
+```
+
+**CORS:**
+```bash
+# Dev: Tüm origin'lere izin
+CORS_ORIGINS=*
+
+# Prod: Sadece belirli domain'ler
+CORS_ORIGINS=https://app.example.com,https://admin.example.com
+```
+
+**Webhook Security:**
+```bash
+# HMAC-SHA256 signing key (openssl rand -hex 32)
+WEBHOOK_SECRET=abc123def456...
+WEBHOOK_TIMEOUT_SECONDS=10.0
+WEBHOOK_MAX_RETRIES=3
+```
+
+**Production Runtime:**
+```bash
+# Gunicorn worker sayısı (formula: 2 x CPU + 1)
+WEB_CONCURRENCY=4
+WEB_TIMEOUT=120
+
+# Celery worker ayarları
+CELERY_WORKER_CONCURRENCY=8
+CELERY_WORKER_POOL=prefork
+CELERY_WORKER_LOGLEVEL=warning
+```
+
+#### 18.2.3 Environment Variable Tablosu
+
+| Variable | Dev | Test | Prod | Açıklama |
+|----------|-----|------|------|----------|
+| `DATABASE_URL` | rageval_dev | rageval_test | rageval_prod | Farklı DB'ler |
+| `EVALUATION_MODE` | sync | sync | async | Prod'da async |
+| `CORS_ORIGINS` | * | (boş) | https://... | Güvenlik |
+| `WEB_CONCURRENCY` | 2 | 2 | 4 | Prod'da daha fazla worker |
+| `OPENAI_API_KEY` | mock/boş | mock | GERÇEK KEY | Prod'da gerçek API |
+
+---
+
+### 18.3 Docker Compose Overlay Pattern
+
+**Overlay Pattern**: Base dosya + ortama özel dosya = Birleşik konfigürasyon
+
+#### 18.3.1 Dosya Yapısı
+
+```
+docker-compose.yml           → BASE (ortak ayarlar)
+docker-compose.dev.yml       → Development overlay
+docker-compose.test.yml      → Test overlay
+docker-compose.prod.yml      → Production overlay
+```
+
+#### 18.3.2 Base Dosya (docker-compose.yml)
+
+**Tüm ortamlar için ortak:**
+- Service tanımları (api, worker, db, redis, migrate)
+- Temel komutlar
+- Volume binding'ler
+- Dependency chain'leri
+- Healthcheck'ler
+
+**Örnek:**
+```yaml
+services:
+  api:
+    build: .
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+    command: bash scripts/start_api.sh --reload
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+```
+
+#### 18.3.3 Development Overlay (docker-compose.dev.yml)
+
+**Geliştirme için özelleştirmeler:**
+```yaml
+services:
+  api:
+    env_file: .env.dev              # Dev environment'ı yükle
+    volumes:
+      - ./:/app                     # Kod değişiklikleri anında yansır
+    command: bash scripts/start_api.sh --reload  # Hot reload
+    ports:
+      - "8000:8000"                 # API dışarıya açık
+    restart: "no"                   # Manuel kontrol
+
+  db:
+    ports:
+      - "5432:5432"                 # PostgreSQL dışarıya açık (psql ile bağlan)
+    environment:
+      POSTGRES_DB: rageval_dev
+
+  redis:
+    ports:
+      - "6379:6379"                 # Redis dışarıya açık (redis-cli ile bağlan)
+```
+
+**Kullanım:**
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+```
+
+#### 18.3.4 Test Overlay (docker-compose.test.yml)
+
+**Test için özelleştirmeler:**
+```yaml
+services:
+  api:
+    env_file: .env.test
+    command: bash scripts/start_api.sh  # Reload yok (sabit test)
+    restart: "no"
+
+  db:
+    environment:
+      POSTGRES_DB: rageval_test
+    restart: "no"
+```
+
+**Kullanım:**
+```bash
+docker-compose -f docker-compose.yml -f docker-compose.test.yml up
+```
+
+#### 18.3.5 Production Overlay (docker-compose.prod.yml)
+
+**Production için özelleştirmeler:**
+
+**Network İzolasyonu:**
+```yaml
+networks:
+  internal:   # DB, Redis, Worker - KAPALI
+    driver: bridge
+  external:   # API, Nginx - AÇIK
+    driver: bridge
+```
+
+**API Service:**
+```yaml
+api:
+  env_file: .env.prod
+  command: >
+    gunicorn app.main:app
+    --worker-class uvicorn.workers.UvicornWorker
+    --workers ${WEB_CONCURRENCY:-4}
+    --bind 0.0.0.0:8000
+    --timeout ${WEB_TIMEOUT:-120}
+  restart: unless-stopped           # Auto-restart
+  networks:
+    - internal                      # DB/Redis ile konuş
+  expose:
+    - "8000"                        # Sadece internal (Nginx için)
+  deploy:
+    resources:
+      limits:
+        cpus: '0.5'                 # Max 0.5 CPU core
+        memory: 512M                # Max 512MB RAM
+  healthcheck:
+    test: ["CMD", "python", "-c", "import httpx; ..."]
+    interval: 30s
+```
+
+**Worker Service:**
+```yaml
+worker:
+  command: >
+    celery -A app.tasks.celery_app.celery_app worker
+    --loglevel=${CELERY_WORKER_LOGLEVEL:-warning}
+    --concurrency=${CELERY_WORKER_CONCURRENCY:-8}
+  networks:
+    - internal                      # Sadece internal (dış dünya erişemez)
+  deploy:
+    resources:
+      limits:
+        cpus: '1.0'
+        memory: 1024M
+```
+
+**Database Service:**
+```yaml
+db:
+  networks:
+    - internal                      # KAPALI (sadece internal network)
+  # ports: YOK!                     # Dışarıya açık port yok
+  volumes:
+    - pgdata_prod:/var/lib/postgresql/data
+  command: >
+    postgres
+    -c shared_buffers=256MB
+    -c max_connections=100
+  deploy:
+    resources:
+      limits:
+        cpus: '1.0'
+        memory: 1024M
+```
+
+**Redis Service:**
+```yaml
+redis:
+  networks:
+    - internal                      # KAPALI
+  command: redis-server --maxmemory 200mb --maxmemory-policy allkeys-lru
+  deploy:
+    resources:
+      limits:
+        cpus: '0.25'
+        memory: 256M
+```
+
+**Kullanım:**
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+```
+
+---
+
+### 18.4 Nginx Reverse Proxy
+
+#### 18.4.1 Amaç ve Faydalar
+
+**Neden Nginx?**
+- **Tek URL**: Tüm servisler `https://myapp.com/*` altında
+- **Güvenlik**: DB ve Redis dışarıya kapalı
+- **SSL Termination**: Tek noktadan HTTPS yönetimi
+- **Rate Limiting**: DDoS koruması
+- **Load Balancing**: Birden fazla API instance'ı dengeleyebilir
+- **Caching**: Statik yanıtları cache'ler
+
+#### 18.4.2 Mimari
+
+**ÖNCE (Nginx olmadan):**
+```
+http://myapp.com:8000/evaluate    → API (direkt erişim)
+http://myapp.com:5432             → PostgreSQL (GÜVENLİK RİSKİ!)
+http://myapp.com:6379             → Redis (GÜVENLİK RİSKİ!)
+```
+
+**ŞİMDİ (Nginx ile):**
+```
+                    Internet
+                       ↓
+        ┌──────────────────────────────┐
+        │   Nginx (Port 80/443)        │  ← TEK GİRİŞ NOKTASI
+        │   - Routing                  │
+        │   - SSL termination          │
+        │   - Rate limiting            │
+        │   - Security headers         │
+        └──────────────┬───────────────┘
+                       │
+              ┌────────┴─────────┐
+              ↓                  ↓
+        [External Net]      [Internal Net]
+              │                  │
+              │            ┌─────┴──────┬─────────┐
+              │            ↓            ↓         ↓
+              │       ┌────────┐   ┌────────┐  ┌────────┐
+              │       │  API   │   │   DB   │  │ Redis  │
+              │       │ (8000) │   │ (5432) │  │ (6379) │
+              │       └────┬───┘   └────────┘  └────────┘
+              │            │            ↑            ↑
+              │            ↓            │            │
+              │       ┌────────┐       │            │
+              │       │ Worker │───────┴────────────┘
+              │       └────────┘
+              │
+         (DB ve Redis dışarıdan ERİŞİLEMEZ)
+```
+
+#### 18.4.3 Nginx Konfigürasyonu (nginx.conf)
+
+**Upstream Tanımı:**
+```nginx
+http {
+    upstream api_backend {
+        server api:8000;   # API container'ının internal adresi
+    }
+
+    # Rate limiting (DDoS protection)
+    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+```
+
+**Routing Kuralları:**
+```nginx
+    server {
+        listen 80;
+        server_name myapp.com;
+
+        # API endpoints: /api/* → API service
+        location /api/ {
+            limit_req zone=api_limit burst=20 nodelay;
+
+            proxy_pass http://api_backend/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+
+            proxy_connect_timeout 60s;
+            proxy_read_timeout 120s;
+        }
+
+        # Health check: /health → API service
+        location /health {
+            proxy_pass http://api_backend/health;
+            access_log off;  # Logları spam'leme
+        }
+
+        # API docs: /docs, /redoc → API service
+        location ~ ^/(docs|redoc|openapi.json) {
+            proxy_pass http://api_backend;
+        }
+
+        # Metrics (internal only)
+        location /metrics {
+            allow 10.0.0.0/8;      # Sadece internal network
+            allow 172.16.0.0/12;   # Docker network
+            deny all;
+
+            proxy_pass http://api_backend/metrics;
+        }
+
+        # Security headers
+        add_header X-Frame-Options "SAMEORIGIN" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-XSS-Protection "1; mode=block" always;
+    }
+}
+```
+
+#### 18.4.4 Nginx Service (docker-compose.prod.yml)
+
+```yaml
+nginx:
+  image: nginx:alpine
+  volumes:
+    - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  ports:
+    - "80:80"                       # HTTP
+    - "443:443"                     # HTTPS
+  restart: unless-stopped
+  networks:
+    - external                      # İnternet'e açık
+    - internal                      # API'ye bağlanmak için
+  depends_on:
+    api:
+      condition: service_healthy    # API healthy olana kadar bekleme
+  deploy:
+    resources:
+      limits:
+        cpus: '0.25'
+        memory: 128M
+```
+
+#### 18.4.5 URL Mapping
+
+| Dış URL | Internal Routing | Servis |
+|---------|------------------|--------|
+| `http://myapp.com/api/evaluate` | `http://api:8000/evaluate` | API |
+| `http://myapp.com/health` | `http://api:8000/health` | API Health |
+| `http://myapp.com/docs` | `http://api:8000/docs` | API Docs |
+| `http://myapp.com/metrics` | `http://api:8000/metrics` | API Metrics (internal only) |
+| `http://myapp.com:5432` | ❌ KAPALI | PostgreSQL |
+| `http://myapp.com:6379` | ❌ KAPALI | Redis |
+
+---
+
+### 18.5 Resource Limits
+
+**Neden gerekli?**
+- Bir servis çok fazla kaynak kullanırsa diğerlerini etkilemesin
+- OOM (Out of Memory) killer sadece ilgili container'ı öldürsün
+- Predictable performance
+
+**Resource Allocation:**
+
+| Servis | CPU Limit | Memory Limit | Açıklama |
+|--------|-----------|--------------|----------|
+| API | 0.5 core | 512MB | Web request handling (CPU düşük) |
+| Worker | 1.0 core | 1GB | LLM evaluation (CPU ve RAM yoğun) |
+| DB | 1.0 core | 1GB | PostgreSQL query processing |
+| Redis | 0.25 core | 256MB | Cache (minimal kaynak) |
+| Nginx | 0.25 core | 128MB | Reverse proxy (çok hafif) |
+
+**Toplam:** ~3 CPU cores, ~3GB RAM
+
+**Sunucu gereksinimleri:**
+- Minimum: 4 CPU cores, 4GB RAM
+- Önerilen: 8 CPU cores, 8GB RAM
+
+---
+
+### 18.6 Deployment Komutları
+
+#### Development
+```bash
+# Başlat
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+# Arka planda başlat
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+# Logları izle
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml logs -f api
+
+# Durdur
+docker-compose -f docker-compose.yml -f docker-compose.dev.yml down
+```
+
+#### Test
+```bash
+# Test ortamını başlat
+docker-compose -f docker-compose.yml -f docker-compose.test.yml up -d
+
+# Testleri çalıştır
+docker-compose -f docker-compose.yml -f docker-compose.test.yml exec api pytest
+
+# Durdur
+docker-compose -f docker-compose.yml -f docker-compose.test.yml down
+```
+
+#### Production
+```bash
+# İlk deployment
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+# Logları izle
+docker compose -f docker-compose.yml -f docker-compose.prod.yml logs -f
+
+# Health check
+curl http://localhost/health
+
+# Servisi yeniden başlat (zero-downtime)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml restart api
+
+# Durdur
+docker compose -f docker-compose.yml -f docker-compose.prod.yml down
+
+# HER ŞEYİ temizle (volumes dahil - DANGER!)
+docker compose -f docker-compose.yml -f docker-compose.prod.yml down -v
+```
+
+---
+
+### 18.7 Güvenlik Özellikleri
+
+#### 18.7.1 Network İzolasyonu
+- **DB ve Redis:** Sadece `internal` network'te (dış dünya erişemez)
+- **API:** Hem `internal` hem `external` (Nginx ile iletişim + DB/Redis erişimi)
+- **Nginx:** Hem `internal` hem `external` (internet + API)
+
+#### 18.7.2 Port Güvenliği
+- **Production'da açık:** Sadece port 80 (HTTP) ve 443 (HTTPS)
+- **Kapalı:** 5432 (DB), 6379 (Redis), 8000 (API direkt)
+
+#### 18.7.3 Environment Variable Security
+- `.env.prod` asla git'e eklenmez (`.gitignore`'da)
+- Secret'lar (API keys, passwords) sadece production sunucuda
+- Template dosyaları (`*template`) placeholder içerir
+
+#### 18.7.4 Rate Limiting
+```nginx
+# Nginx'te tanımlı
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+limit_req zone=api_limit burst=20 nodelay;
+```
+
+#### 18.7.5 Security Headers
+```nginx
+X-Frame-Options: SAMEORIGIN
+X-Content-Type-Options: nosniff
+X-XSS-Protection: 1; mode=block
+Referrer-Policy: no-referrer-when-downgrade
+```
+
+---
+
+### 18.8 Monitoring ve Debugging
+
+#### Health Check
+```bash
+# Nginx üzerinden
+curl http://localhost/health
+
+# Direkt API (internal - sadece sunucuda)
+docker compose exec api curl http://localhost:8000/health
+```
+
+#### Resource Kullanımı
+```bash
+# Gerçek zamanlı izleme
+docker stats
+
+# Çıktı:
+# CONTAINER        CPU %    MEM USAGE / LIMIT     MEM %
+# rageval-api      12.5%    300MB / 512MB         58.6%
+# rageval-worker   45.2%    800MB / 1GB           78.1%
+```
+
+#### Loglar
+```bash
+# Tüm servisler
+docker compose logs -f
+
+# Sadece API
+docker compose logs -f api
+
+# Sadece Worker
+docker compose logs -f worker
+
+# Son 100 satır
+docker compose logs --tail=100 api
+```
+
+#### Container İçine Giriş
+```bash
+# API container'ına shell
+docker compose exec api bash
+
+# Worker container'ına shell
+docker compose exec worker bash
+
+# PostgreSQL shell
+docker compose exec db psql -U postgres -d rageval_prod
+```
+
+---
+
+### 18.9 Backup ve Restore
+
+#### Database Backup
+```bash
+# Backup al
+docker compose exec -T db pg_dump -U postgres rageval_prod > backup_$(date +%Y%m%d).sql
+
+# Backup restore
+docker compose exec -T db psql -U postgres rageval_prod < backup_20260409.sql
+```
+
+#### Volume Backup
+```bash
+# Volume'u tar dosyasına yedekle
+docker run --rm \
+  -v rageval_pgdata_prod:/data \
+  -v $(pwd):/backup \
+  alpine tar czf /backup/pgdata_backup.tar.gz -C /data .
+```
+
+---
+
+### 18.10 Production Checklist
+
+Deployment öncesi kontrol listesi:
+
+- [ ] `.env.prod` dosyası oluşturuldu ve doğru değerler girildi
+- [ ] `DATABASE_URL` production database'e işaret ediyor
+- [ ] `OPENAI_API_KEY` gerçek production key
+- [ ] `WEBHOOK_SECRET` güvenli bir şekilde generate edildi (`openssl rand -hex 32`)
+- [ ] `EVALUATION_MODE=async` (background processing)
+- [ ] `CORS_ORIGINS` sadece belirlenen domain'leri içeriyor
+- [ ] `WEB_CONCURRENCY` sunucunun CPU sayısına göre ayarlandı
+- [ ] SSL sertifikası hazırlandı (Let's Encrypt)
+- [ ] Firewall kuralları doğru (sadece 80/443 açık)
+- [ ] Backup stratejisi belirlendi
+- [ ] Monitoring/alerting kuruldu
+- [ ] Log rotation yapılandırıldı
+
+---
+
+### 18.11 Deployment Akışı Özeti
+
+```
+1. Sunucuya bağlan
+   ssh user@production-server
+
+2. Repo'yu clone et
+   git clone https://github.com/yourorg/llm-evaluation.git
+   cd llm-evaluation
+
+3. Production environment oluştur
+   cp .env.prod.template .env.prod
+   nano .env.prod  # Gerçek değerleri gir
+
+4. Container'ları başlat
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+5. Health check
+   curl http://localhost/health
+
+6. API test
+   curl -X POST http://localhost/api/register \
+     -H "Content-Type: application/json" \
+     -d '{"email": "test@example.com", "password": "test123"}'
+
+7. Logları izle
+   docker compose logs -f
+
+8. Production!
+   # Domain DNS'ini sunucu IP'sine yönlendir
+   # SSL sertifikası kur
+   # Monitoring setup et
+```
 
 ---
 

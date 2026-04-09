@@ -1,0 +1,39 @@
+# ============================================================================
+# Docker Compose - Development Overlay
+# ============================================================================
+# Kullanım: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+# ============================================================================
+
+services:
+  migrate:
+    env_file:
+      - .env.dev
+
+  api:
+    env_file:
+      - .env.dev
+    volumes:
+      - ./:/app  # Code hot-reload için bind mount
+    command: bash scripts/start_api.sh --reload  # Uvicorn reload mode
+    ports:
+      - "8000:8000"  # Host'a expose et
+    restart: "no"  # Manuel kontrol için
+
+  worker:
+    env_file:
+      - .env.dev
+    volumes:
+      - ./:/app  # Code hot-reload için bind mount
+    restart: "no"
+
+  redis:
+    ports:
+      - "6379:6379"  # Redis CLI erişimi için
+    restart: "no"
+
+  db:
+    ports:
+      - "5432:5432"  # Local psql erişimi için
+    restart: "no"
+    environment:
+      POSTGRES_DB: rageval_dev
