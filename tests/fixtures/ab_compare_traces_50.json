@@ -1,0 +1,358 @@
+[
+  {
+    "question": "Python'da list ve tuple arasındaki temel fark nedir?",
+    "answer": "List mutable (değiştirilebilir), tuple ise immutable (değiştirilemez) bir veri yapısıdır. List [] ile tuple () ile tanımlanır.",
+    "contexts": ["In Python, lists are mutable sequences defined with square brackets [], while tuples are immutable sequences defined with parentheses ()."],
+    "ground_truth": "List mutable, tuple immutable.",
+    "metadata": {"case": "01_faithful_tr", "category": "faithful", "expected": "high"}
+  },
+  {
+    "question": "HTTPS hangi portu kullanır?",
+    "answer": "HTTPS varsayılan olarak 443 numaralı TCP portunu kullanır.",
+    "contexts": ["HTTPS (HTTP over TLS) uses TCP port 443 by default, while plain HTTP uses port 80."],
+    "ground_truth": "443.",
+    "metadata": {"case": "02_faithful_tr", "category": "faithful", "expected": "high"}
+  },
+  {
+    "question": "Suyun normal atmosfer basıncında kaynama noktası kaç derecedir?",
+    "answer": "Normal atmosfer basıncında (1 atm, deniz seviyesi) saf suyun kaynama noktası 100 °C'dir.",
+    "contexts": ["Pure water boils at 100 °C (212 °F) at 1 atmosphere of pressure, the standard atmospheric pressure at sea level."],
+    "ground_truth": "100 °C.",
+    "metadata": {"case": "03_faithful_tr", "category": "faithful", "expected": "high"}
+  },
+  {
+    "question": "Türkiye'nin Avrupa Birliği'ne katılım başvurusu hangi yıl yapıldı?",
+    "answer": "Türkiye, Avrupa Ekonomik Topluluğu'na tam üyelik için resmi başvurusunu 14 Nisan 1987 tarihinde yaptı.",
+    "contexts": ["Turkey applied for full membership of the European Economic Community on 14 April 1987. Accession negotiations formally opened on 3 October 2005."],
+    "ground_truth": "1987.",
+    "metadata": {"case": "04_faithful_tr", "category": "faithful", "expected": "high"}
+  },
+  {
+    "question": "DNA'nın dört bazı nedir?",
+    "answer": "DNA'nın dört bazı adenin (A), timin (T), guanin (G) ve sitozin (C)'dir.",
+    "contexts": ["The four nucleobases of DNA are adenine (A), thymine (T), guanine (G) and cytosine (C). Adenine pairs with thymine, and guanine pairs with cytosine."],
+    "ground_truth": "A, T, G, C.",
+    "metadata": {"case": "05_faithful_tr", "category": "faithful", "expected": "high"}
+  },
+  {
+    "question": "What does HTTP status code 404 mean?",
+    "answer": "HTTP 404 Not Found indicates that the server could not find the requested resource. It is a client-side error in the 4xx range.",
+    "contexts": ["The HTTP 404 Not Found response status code indicates that the server cannot find the requested resource. Links that lead to a 404 page are often called broken or dead links."],
+    "ground_truth": "Resource not found.",
+    "metadata": {"case": "06_faithful_en", "category": "faithful", "expected": "high"}
+  },
+  {
+    "question": "Who wrote 'Hamlet'?",
+    "answer": "'Hamlet' was written by William Shakespeare, believed to have been composed between 1599 and 1601.",
+    "contexts": ["Hamlet is a tragedy written by William Shakespeare sometime between 1599 and 1601. It is Shakespeare's longest play."],
+    "ground_truth": "William Shakespeare.",
+    "metadata": {"case": "07_faithful_en", "category": "faithful", "expected": "high"}
+  },
+  {
+    "question": "What is the largest planet in our Solar System?",
+    "answer": "Jupiter is the largest planet in our Solar System, a gas giant with a mass more than twice that of all the other planets combined.",
+    "contexts": ["Jupiter is the fifth planet from the Sun and the largest in the Solar System. It is a gas giant with a mass more than two and a half times that of all the other planets combined."],
+    "ground_truth": "Jupiter.",
+    "metadata": {"case": "08_faithful_en", "category": "faithful", "expected": "high"}
+  },
+  {
+    "question": "What does TCP stand for?",
+    "answer": "TCP stands for Transmission Control Protocol. It is a connection-oriented transport-layer protocol that provides reliable, ordered delivery of bytes.",
+    "contexts": ["TCP (Transmission Control Protocol) is one of the main protocols of the Internet protocol suite. It provides reliable, ordered, and error-checked delivery of a stream of octets between applications running on hosts."],
+    "ground_truth": "Transmission Control Protocol.",
+    "metadata": {"case": "09_faithful_en", "category": "faithful", "expected": "high"}
+  },
+  {
+    "question": "What is photosynthesis?",
+    "answer": "Photosynthesis is the biological process by which plants, algae and some bacteria convert light energy (usually from the Sun) into chemical energy stored in glucose, using carbon dioxide and water as inputs and releasing oxygen as a by-product.",
+    "contexts": ["Photosynthesis is a process used by plants, algae, and certain bacteria to convert light energy into chemical energy that is stored in sugars. The process uses CO2 and water, producing glucose and oxygen."],
+    "ground_truth": "Light-driven synthesis of glucose from CO2 and water.",
+    "metadata": {"case": "10_faithful_en", "category": "faithful", "expected": "high"}
+  },
+
+  {
+    "question": "Python dilinin ilk sürümü hangi yıl yayınlandı?",
+    "answer": "Python'un ilk sürümü Guido van Rossum tarafından 1989 yılında yayınlandı.",
+    "contexts": ["Python was created by Guido van Rossum and first released in 1991 as Python 0.9.0. Development started in the late 1980s."],
+    "ground_truth": "1991 (0.9.0).",
+    "metadata": {"case": "11_subtle_tr", "category": "subtle", "expected": "medium"}
+  },
+  {
+    "question": "Osmanlı İmparatorluğu hangi yılda kuruldu?",
+    "answer": "Osmanlı İmparatorluğu 1289 yılında Osman Bey tarafından kuruldu.",
+    "contexts": ["The Ottoman Empire was founded around 1299 by Osman I in the region of Bithynia, on the frontier of the Byzantine Empire."],
+    "ground_truth": "~1299.",
+    "metadata": {"case": "12_subtle_tr", "category": "subtle", "expected": "medium"}
+  },
+  {
+    "question": "Dünya'nın Güneş'e olan ortalama uzaklığı kaç kilometredir?",
+    "answer": "Dünya ile Güneş arasındaki ortalama uzaklık yaklaşık 150 milyon kilometredir; bu değere 1 astronomi birimi (AU) denir. Tam değeri 149,6 milyon km'dir.",
+    "contexts": ["The astronomical unit (AU) is defined as exactly 149,597,870,700 metres, roughly the mean distance between the Earth and the Sun."],
+    "ground_truth": "~149,6 milyon km (1 AU).",
+    "metadata": {"case": "13_faithful_tr", "category": "faithful", "expected": "high"}
+  },
+  {
+    "question": "Türkçede alfabede kaç harf vardır?",
+    "answer": "Modern Türk alfabesi 30 harften oluşur ve 1928 Harf Devrimi ile Latin alfabesine geçilmiştir.",
+    "contexts": ["The modern Turkish alphabet, introduced by the 1928 Alphabet Reform, consists of 29 letters adapted from the Latin script. It replaced the Ottoman Turkish alphabet based on Arabic script."],
+    "ground_truth": "29 harf.",
+    "metadata": {"case": "14_subtle_tr", "category": "subtle", "expected": "medium"}
+  },
+  {
+    "question": "Eyfel Kulesi hangi yıl açıldı?",
+    "answer": "Eyfel Kulesi 1887 yılında Paris'te düzenlenen Dünya Sergisi'nin girişinde açıldı.",
+    "contexts": ["The Eiffel Tower was completed and opened to the public on 31 March 1889 as the entrance arch of the 1889 Exposition Universelle (World's Fair) in Paris."],
+    "ground_truth": "1889.",
+    "metadata": {"case": "15_subtle_tr", "category": "subtle", "expected": "medium"}
+  },
+  {
+    "question": "How many bones are in the adult human body?",
+    "answer": "The adult human body contains 212 bones, while a newborn is born with about 270 bones which fuse over time.",
+    "contexts": ["The adult human skeleton is composed of 206 bones. Newborns have about 300 distinct bones that gradually fuse as the body grows."],
+    "ground_truth": "206.",
+    "metadata": {"case": "16_subtle_en", "category": "subtle", "expected": "medium"}
+  },
+  {
+    "question": "When did World War II end?",
+    "answer": "World War II ended in August 1946 with the surrender of Japan following the atomic bombings of Hiroshima and Nagasaki.",
+    "contexts": ["World War II ended with the formal surrender of Japan on 2 September 1945, following the atomic bombings of Hiroshima on 6 August and Nagasaki on 9 August 1945."],
+    "ground_truth": "September 1945.",
+    "metadata": {"case": "17_subtle_en", "category": "subtle", "expected": "medium"}
+  },
+  {
+    "question": "Which element has the atomic number 6?",
+    "answer": "The element with atomic number 6 is nitrogen, one of the building blocks of organic molecules.",
+    "contexts": ["Carbon is the chemical element with atomic number 6 and symbol C. It is the fourth most abundant element in the universe by mass."],
+    "ground_truth": "Carbon.",
+    "metadata": {"case": "18_subtle_en", "category": "subtle", "expected": "medium"}
+  },
+  {
+    "question": "Who painted the Mona Lisa?",
+    "answer": "The Mona Lisa was painted by Michelangelo around the year 1506, during the Italian Renaissance.",
+    "contexts": ["The Mona Lisa (La Gioconda) is a half-length portrait painting by the Italian Renaissance artist Leonardo da Vinci. It is believed to have been painted between 1503 and 1519."],
+    "ground_truth": "Leonardo da Vinci.",
+    "metadata": {"case": "19_subtle_en", "category": "subtle", "expected": "medium"}
+  },
+  {
+    "question": "Which year did Albert Einstein publish the special theory of relativity?",
+    "answer": "Albert Einstein published the special theory of relativity in 1915, in a paper titled 'On the Electrodynamics of Moving Bodies'.",
+    "contexts": ["Einstein published his special theory of relativity in 1905 in the paper 'Zur Elektrodynamik bewegter Körper' ('On the Electrodynamics of Moving Bodies'). His general theory of relativity was published in 1915."],
+    "ground_truth": "1905 (special); 1915 (general).",
+    "metadata": {"case": "20_subtle_en", "category": "subtle", "expected": "medium"}
+  },
+
+  {
+    "question": "İstanbul'un fethi hangi yıl oldu ve hangi padişah gerçekleştirdi?",
+    "answer": "İstanbul 1455 yılında Kanuni Sultan Süleyman tarafından fethedildi. Bu fetih Orta Çağ'ın sonu olarak kabul edilir.",
+    "contexts": ["The Fall of Constantinople occurred on 29 May 1453, when the Ottoman forces under Sultan Mehmed II (Fatih Sultan Mehmet) captured the city after a 53-day siege."],
+    "ground_truth": "1453, Fatih Sultan Mehmet.",
+    "metadata": {"case": "21_major_tr", "category": "major", "expected": "low"}
+  },
+  {
+    "question": "Python'da GIL hangi sürümde opsiyonel oldu ve hangi PEP kapsamındadır?",
+    "answer": "Python 3.12 sürümünden itibaren PEP 623 kapsamında GIL opsiyonel olarak devre dışı bırakılabilir. Bu değişiklik I/O-bound işlerde de ciddi hız artışı sağladı.",
+    "contexts": ["PEP 703 ('Making the Global Interpreter Lock Optional in CPython') was accepted in 2023. The first release with an experimental free-threaded build is Python 3.13, released in October 2024. I/O-bound workloads generally see little to no change."],
+    "ground_truth": "Python 3.13, PEP 703.",
+    "metadata": {"case": "22_major_tr", "category": "major", "expected": "low"}
+  },
+  {
+    "question": "Mars'ın kaç uydusu vardır ve adları nedir?",
+    "answer": "Mars'ın üç doğal uydusu vardır: Phobos, Deimos ve Ganymede. Bu uyduların hepsi 1877 yılında keşfedilmiştir.",
+    "contexts": ["Mars has two small natural satellites: Phobos and Deimos. Both were discovered by American astronomer Asaph Hall in August 1877. Ganymede is the largest moon of Jupiter, not Mars."],
+    "ground_truth": "İki uydu: Phobos ve Deimos.",
+    "metadata": {"case": "23_major_tr", "category": "major", "expected": "low"}
+  },
+  {
+    "question": "Türkiye Cumhuriyeti ne zaman kuruldu ve ilk cumhurbaşkanı kimdir?",
+    "answer": "Türkiye Cumhuriyeti 19 Mayıs 1919'da kuruldu ve ilk cumhurbaşkanı İsmet İnönü oldu. Atatürk ise Milli Mücadele'nin lideriydi.",
+    "contexts": ["The Republic of Turkey was officially proclaimed on 29 October 1923. Mustafa Kemal Atatürk was elected as the first President of the Republic on the same day and served until his death in 1938. İsmet İnönü succeeded him as the second President."],
+    "ground_truth": "29 Ekim 1923, ilk cumhurbaşkanı Mustafa Kemal Atatürk.",
+    "metadata": {"case": "24_major_tr", "category": "major", "expected": "low"}
+  },
+  {
+    "question": "HTTP ve HTTPS arasındaki güvenlik farkı nedir ve HTTPS hangi protokolü kullanır?",
+    "answer": "HTTPS, HTTP'nin SSH üzerinden çalışan şifrelenmiş versiyonudur ve 8080 portunu kullanır. HTTP ise 80 portunu kullanır ve MD5 ile şifrelenir.",
+    "contexts": ["HTTPS (HTTP Secure) is an extension of HTTP that uses TLS (Transport Layer Security), the successor of SSL, for encryption. HTTPS uses port 443 by default while plain HTTP uses port 80. TLS provides confidentiality, integrity and authenticity."],
+    "ground_truth": "HTTPS TLS üzerinden çalışır, 443 portu; HTTP 80 portu, şifrelenmez.",
+    "metadata": {"case": "25_major_tr", "category": "major", "expected": "low"}
+  },
+  {
+    "question": "Who discovered penicillin and in which year?",
+    "answer": "Penicillin was discovered by Louis Pasteur in 1892 while he was working on fermentation studies, leading to the founding of modern antibiotics.",
+    "contexts": ["Penicillin, the first widely used antibiotic, was discovered by the Scottish bacteriologist Alexander Fleming in 1928 when he noticed that a Penicillium mould inhibited the growth of Staphylococcus bacteria in a contaminated Petri dish."],
+    "ground_truth": "Alexander Fleming, 1928.",
+    "metadata": {"case": "26_major_en", "category": "major", "expected": "low"}
+  },
+  {
+    "question": "What is the capital of Australia and what is its population?",
+    "answer": "The capital of Australia is Sydney, with a population of approximately 25 million people making it the largest city in the country.",
+    "contexts": ["The capital of Australia is Canberra, located in the Australian Capital Territory. Canberra has a population of about 460,000 as of 2021. Sydney is Australia's largest city (population ~5.3 million) but is not the capital."],
+    "ground_truth": "Canberra, ~460k.",
+    "metadata": {"case": "27_major_en", "category": "major", "expected": "low"}
+  },
+  {
+    "question": "How long does sunlight take to reach Earth?",
+    "answer": "Sunlight takes about 2 hours and 15 minutes to travel from the Sun to Earth, moving at the speed of light through the vacuum of space.",
+    "contexts": ["Sunlight takes approximately 8 minutes and 20 seconds to travel the average distance of one astronomical unit (about 149.6 million km) from the Sun to Earth, travelling at the speed of light (~299,792 km/s)."],
+    "ground_truth": "~8 dakika 20 saniye.",
+    "metadata": {"case": "28_major_en", "category": "major", "expected": "low"}
+  },
+  {
+    "question": "Which planet is closest to the Sun and what is its surface temperature?",
+    "answer": "Venus is the closest planet to the Sun, with surface temperatures reaching up to 800 °C due to its proximity and thin atmosphere.",
+    "contexts": ["Mercury is the innermost and smallest planet in the Solar System. Its surface temperature varies from about -173 °C at night to 427 °C during the day due to its lack of significant atmosphere. Venus is the second planet from the Sun."],
+    "ground_truth": "Mercury, yaklaşık 427 °C gündüz / -173 °C gece.",
+    "metadata": {"case": "29_major_en", "category": "major", "expected": "low"}
+  },
+  {
+    "question": "Who was the first woman to win a Nobel Prize and in which category?",
+    "answer": "Mother Teresa was the first woman to win a Nobel Prize, which she received in Medicine in 1901 for her humanitarian work.",
+    "contexts": ["Marie Curie was the first woman to win a Nobel Prize, receiving the 1903 Nobel Prize in Physics (shared with Pierre Curie and Henri Becquerel) for research on radiation. She later won a second Nobel Prize in Chemistry in 1911, making her the first person to win Nobel Prizes in two different sciences."],
+    "ground_truth": "Marie Curie, Physics, 1903.",
+    "metadata": {"case": "30_major_en", "category": "major", "expected": "low"}
+  },
+
+  {
+    "question": "Python'da dictionary'ler nasıl çalışır?",
+    "answer": "Python dictionary'leri hash tablosu kullanır ve anahtar-değer çiftlerini saklar. Python 3.7+ sürümlerinde eklenme sırasını korur. Dictionary'ler ayrıca otomatik olarak bellek sıkıştırması yapar ve her 1000 ekleme sonrası kendi kendini yeniden dengeler.",
+    "contexts": ["Python dictionaries are implemented as hash tables. They store key-value pairs and support O(1) average-case lookup, insertion and deletion. Since Python 3.7, dictionaries maintain insertion order as a language guarantee."],
+    "ground_truth": "Hash tablosu, O(1), 3.7+ sıra garantisi.",
+    "metadata": {"case": "31_unsupported_tr", "category": "unsupported", "expected": "medium"}
+  },
+  {
+    "question": "İstanbul'daki ulaşım seçenekleri nelerdir?",
+    "answer": "İstanbul'da metro, tramvay, otobüs, vapur, minibüs ve taksi bulunur. Ayrıca şehirde son 5 yılda elektrikli scooter kullanımı %400 artmış ve her gün 2 milyon yolcu metrobüs kullanmaktadır.",
+    "contexts": ["Public transport options in Istanbul include an extensive metro network, trams, buses (including the famous metrobus BRT line), ferries, minibuses (dolmuş), and taxis. The city's transport is operated mainly by İETT and Metro Istanbul."],
+    "ground_truth": "Metro, tramvay, otobüs, vapur, minibüs, taksi.",
+    "metadata": {"case": "32_unsupported_tr", "category": "unsupported", "expected": "medium"}
+  },
+  {
+    "question": "What are the main features of the Java programming language?",
+    "answer": "Java is object-oriented, statically typed, and runs on the JVM enabling cross-platform compatibility via bytecode. Java programs are also 3x faster than C++ on average and use a proprietary garbage collector developed by IBM in 2001.",
+    "contexts": ["Java is a high-level, class-based, object-oriented programming language that is designed to have as few implementation dependencies as possible. It runs on the Java Virtual Machine (JVM), allowing the same compiled bytecode to run on any platform with a JVM implementation."],
+    "ground_truth": "Object-oriented, statically typed, JVM bytecode, cross-platform.",
+    "metadata": {"case": "33_unsupported_en", "category": "unsupported", "expected": "medium"}
+  },
+  {
+    "question": "How does HTTPS ensure security?",
+    "answer": "HTTPS uses TLS to encrypt traffic between client and server, providing confidentiality, integrity, and authentication via digital certificates. HTTPS was invented by Tim Berners-Lee in 1995 and is used by over 99% of websites today.",
+    "contexts": ["HTTPS uses Transport Layer Security (TLS, formerly SSL) to encrypt the communication between a web browser and a web server. It provides three main guarantees: confidentiality (via symmetric encryption), integrity (via MACs), and authentication (via X.509 certificates signed by a trusted CA)."],
+    "ground_truth": "TLS: encryption, integrity, authentication via certificates.",
+    "metadata": {"case": "34_unsupported_en", "category": "unsupported", "expected": "medium"}
+  },
+  {
+    "question": "What does JSON stand for and where is it commonly used?",
+    "answer": "JSON stands for JavaScript Object Notation. It is commonly used for configuration files, APIs, and data interchange. Google invented JSON in 1999 and it has become the most used data format on the web.",
+    "contexts": ["JSON (JavaScript Object Notation) is a lightweight data-interchange format. It was originally specified by Douglas Crockford in the early 2000s and is derived from JavaScript object literal syntax. It is commonly used for web APIs, configuration files and data storage."],
+    "ground_truth": "JavaScript Object Notation; Douglas Crockford; web APIs/config.",
+    "metadata": {"case": "35_unsupported_en", "category": "unsupported", "expected": "medium"}
+  },
+
+  {
+    "question": "Redis veritabanı nedir ve hangi veri yapılarını destekler?",
+    "answer": "Redis, anahtar-değer tabanlı bir in-memory veri deposu ve cache sistemidir. Yüksek performanslıdır.",
+    "contexts": ["Redis is an open-source, in-memory data structure store used as a database, cache, message broker and streaming engine. It supports a wide variety of data structures: strings, hashes, lists, sets, sorted sets, bitmaps, hyperloglogs, geospatial indexes and streams."],
+    "ground_truth": "In-memory KV store; hash, list, set, sorted set, stream, geo, bitmap.",
+    "metadata": {"case": "36_partial_tr", "category": "partial", "expected": "medium"}
+  },
+  {
+    "question": "Docker container'lar nasıl çalışır ve Docker image'larla ilişkisi nedir?",
+    "answer": "Docker container'lar izole uygulama ortamlarıdır.",
+    "contexts": ["A Docker container is a runtime instance of a Docker image. Images are immutable read-only templates built from layered file systems and a manifest (Dockerfile instructions). When a container starts, Docker mounts the image layers and adds a thin writable layer on top; all changes during runtime happen in this layer unless persistent volumes are used."],
+    "ground_truth": "Container = running instance of image; immutable image + writable layer.",
+    "metadata": {"case": "37_partial_tr", "category": "partial", "expected": "medium"}
+  },
+  {
+    "question": "What is Kubernetes and what problems does it solve?",
+    "answer": "Kubernetes is a container orchestration platform.",
+    "contexts": ["Kubernetes (K8s) is an open-source container orchestration system originally developed by Google. It automates the deployment, scaling and management of containerised applications across clusters of hosts. It solves problems like service discovery, load balancing, rolling updates, self-healing (restarts failed containers), secret and configuration management, and horizontal autoscaling."],
+    "ground_truth": "Orchestrator: deploy, scale, heal, discovery, LB, rolling updates.",
+    "metadata": {"case": "38_partial_en", "category": "partial", "expected": "medium"}
+  },
+  {
+    "question": "What is the relationship between SQL and relational databases?",
+    "answer": "SQL is a query language used for relational databases.",
+    "contexts": ["SQL (Structured Query Language) is the standard declarative query language used to interact with relational database management systems (RDBMS) such as PostgreSQL, MySQL, Oracle, and SQL Server. It is used to define schema (DDL), manipulate data (DML) with SELECT/INSERT/UPDATE/DELETE, and control access (DCL). SQL was standardised by ANSI in 1986 and by ISO in 1987."],
+    "ground_truth": "Standard query language for RDBMS: DDL, DML, DCL; ANSI/ISO standardised.",
+    "metadata": {"case": "39_partial_en", "category": "partial", "expected": "medium"}
+  },
+  {
+    "question": "How do JWT tokens work for authentication?",
+    "answer": "JWT is a token format used for authentication.",
+    "contexts": ["A JSON Web Token (JWT) is an open standard (RFC 7519) that defines a compact, URL-safe means of representing claims between two parties. A JWT consists of three base64url-encoded parts separated by dots: header, payload and signature. The server signs the token with a secret or private key; the client sends it back in subsequent requests (typically in the Authorization header) and the server verifies the signature to authenticate the user without needing server-side session state."],
+    "ground_truth": "Signed token with header.payload.signature; stateless auth via signature verification.",
+    "metadata": {"case": "40_partial_en", "category": "partial", "expected": "medium"}
+  },
+
+  {
+    "question": "Python'da bir fonksiyon nasıl tanımlanır?",
+    "answer": "Pizza çok lezzetli bir yemektir, özellikle İtalyan mutfağının en sevilenlerinden biridir. Napoli pizzası UNESCO koruması altındadır.",
+    "contexts": ["In Python, a function is defined using the def keyword, followed by the function name, parameters in parentheses, a colon, and an indented block of code. Example: def add(a, b): return a + b."],
+    "ground_truth": "def fonksiyon_adı(params): ...",
+    "metadata": {"case": "41_offtopic_tr", "category": "offtopic", "expected_flags": ["is_off_topic"]}
+  },
+  {
+    "question": "PostgreSQL'de transaction izolasyon seviyeleri nelerdir?",
+    "answer": "Bugün hava gerçekten çok güzel. Dışarı çıkıp yürüyüş yapmanızı tavsiye ederim.",
+    "contexts": ["PostgreSQL supports four transaction isolation levels: Read Uncommitted, Read Committed (default), Repeatable Read, and Serializable. Each provides different trade-offs between performance and consistency."],
+    "ground_truth": "Read Uncommitted, Read Committed, Repeatable Read, Serializable.",
+    "metadata": {"case": "42_offtopic_tr", "category": "offtopic", "expected_flags": ["is_off_topic", "is_deflection"]}
+  },
+  {
+    "question": "Yapay zekâ modelleri nasıl eğitilir?",
+    "answer": "Bu konuda herhangi bir yorum yapmamayı tercih ederim, lütfen başka bir konuda yardımcı olabilir miyim?",
+    "contexts": ["AI models are typically trained by feeding them large datasets and adjusting internal parameters (weights) through optimisation algorithms like gradient descent, minimising a loss function over many iterations (epochs)."],
+    "ground_truth": "Gradient descent ile loss minimize, epochs, büyük dataset.",
+    "metadata": {"case": "43_deflection_tr", "category": "offtopic", "expected_flags": ["is_deflection"]}
+  },
+  {
+    "question": "What is the purpose of a load balancer?",
+    "answer": "I prefer not to discuss networking topics. Let's talk about cooking instead.",
+    "contexts": ["A load balancer distributes incoming network traffic across multiple backend servers to ensure no single server becomes overwhelmed, improving responsiveness, availability and fault tolerance."],
+    "ground_truth": "Distributes traffic across servers for availability and performance.",
+    "metadata": {"case": "44_deflection_en", "category": "offtopic", "expected_flags": ["is_deflection"]}
+  },
+  {
+    "question": "How does garbage collection work in Python?",
+    "answer": "Football is one of the most popular sports in the world, played in over 200 countries with international competitions like the FIFA World Cup drawing millions of viewers.",
+    "contexts": ["CPython uses reference counting as its primary memory management mechanism: each object tracks how many references point to it, and when the count drops to zero the object is immediately deallocated. A supplementary cyclic garbage collector detects and frees reference cycles that reference counting alone cannot."],
+    "ground_truth": "Reference counting + cyclic GC.",
+    "metadata": {"case": "45_offtopic_en", "category": "offtopic", "expected_flags": ["is_off_topic"]}
+  },
+
+  {
+    "question": "ACID özellikleri nelerdir ve her biri ne anlama gelir?",
+    "answer": "ACID, veritabanı transaction'larının dört temel özelliğini ifade eder: Atomicity (atomiklik), Consistency (tutarlılık), Isolation (izolasyon) ve Durability (dayanıklılık). Atomicity bir transaction'ın ya tamamen yapılması ya da hiç yapılmamasını sağlar; Consistency veritabanının geçerli bir durumdan başka bir geçerli duruma geçmesini garanti eder; Isolation eşzamanlı transaction'ların birbirini etkilememesini sağlar; Durability commit edilen değişikliklerin kalıcı olmasını garanti eder.",
+    "contexts": ["Bilgisayar kullanırken klavye ve fare en temel giriş cihazlarıdır. Klavye metin girmek, fare ise imleci kontrol etmek için kullanılır."],
+    "ground_truth": "Atomicity, Consistency, Isolation, Durability.",
+    "metadata": {"case": "46_low_precision_tr", "category": "context_issue", "expected_context_precision": "low"}
+  },
+  {
+    "question": "What is the difference between TCP and UDP?",
+    "answer": "TCP (Transmission Control Protocol) is connection-oriented, providing reliable, ordered and error-checked delivery of a byte stream via handshaking, acknowledgements and retransmissions. UDP (User Datagram Protocol) is connectionless: it sends datagrams without establishing a session, with no guarantee of delivery, ordering or duplicate protection, but with lower overhead and latency. TCP is used for HTTP(S), SSH, email; UDP for DNS, VoIP, real-time gaming and video streaming.",
+    "contexts": ["Cooking pasta requires boiling water with salt for about 10 minutes, then draining and serving with a sauce of your choice."],
+    "ground_truth": "TCP connection-oriented reliable; UDP connectionless fast.",
+    "metadata": {"case": "47_low_precision_en", "category": "context_issue", "expected_context_precision": "low"}
+  },
+  {
+    "question": "Django framework'ünün temel bileşenleri nelerdir?",
+    "answer": "Django, Python için geliştirilmiş yüksek seviye bir web framework'üdür. MVT (Model-View-Template) mimarisini benimser. Temel bileşenleri şunlardır: ORM (Object-Relational Mapper) veritabanı erişimi için; URL routing sistemi; Template engine HTML render için; Form handling; Authentication sistemi; Admin paneli; Middleware yapısı; Signal sistemi.",
+    "contexts": ["Django is a Python web framework."],
+    "ground_truth": "ORM, URL routing, Templates, Forms, Auth, Admin, Middleware, Signals.",
+    "metadata": {"case": "48_low_recall_tr", "category": "context_issue", "expected_context_recall": "low"}
+  },
+  {
+    "question": "What are the key differences between REST and GraphQL?",
+    "answer": "REST uses multiple endpoints for different resources and returns fixed data structures, often leading to over-fetching or under-fetching of data. GraphQL uses a single endpoint and a strongly-typed schema; clients specify exactly what fields they need in a single request. REST relies on HTTP verbs (GET/POST/PUT/DELETE) while GraphQL primarily uses POST with a query body. GraphQL has built-in introspection and self-documenting APIs, while REST typically needs external docs like OpenAPI.",
+    "contexts": ["REST is an API style."],
+    "ground_truth": "REST multi-endpoint fixed shape; GraphQL single endpoint typed schema client-driven.",
+    "metadata": {"case": "49_low_recall_en", "category": "context_issue", "expected_context_recall": "low"}
+  },
+  {
+    "question": "Git'te branch'ler nasıl birleştirilir ve merge ile rebase arasındaki fark nedir?",
+    "answer": "Git'te branch birleştirmek için iki ana yöntem vardır: merge ve rebase. Merge, iki branch'in tarihçesini koruyarak yeni bir merge commit oluşturur — `git merge <branch>` komutuyla yapılır ve non-linear bir tarihçe üretir. Rebase ise bir branch'in commit'lerini başka bir branch'in tepesine yeniden yazar, linear bir tarihçe oluşturur — `git rebase <branch>` komutuyla yapılır. Merge güvenlidir (history değişmez); rebase ise paylaşılan branch'lerde tehlikelidir çünkü commit hash'ler değişir.",
+    "contexts": ["Git branches can be integrated with either merge (creates a merge commit preserving both histories) or rebase (replays commits onto a new base, producing a linear history). Merge is non-destructive; rebase rewrites commit hashes and should not be used on branches that others have already based work on."],
+    "ground_truth": "Merge = merge commit, non-destructive, non-linear; rebase = replay commits, linear, rewrites history.",
+    "metadata": {"case": "50_faithful_tr", "category": "faithful", "expected": "high"}
+  }
+]

@@ -81,31 +81,39 @@ async def submit_and_wait(
     client: httpx.AsyncClient,
     stack: Stack,
     payload: dict[str, Any],
+    sem: asyncio.Semaphore,
     poll_interval: float = 2.0,
     timeout: float = 180.0,
 ) -> TraceResult:
-    """Submit one trace and poll until evaluation completes (or timeout)."""
+    """Submit one trace and poll until evaluation completes (or timeout).
+
+    ``sem`` throttles ingest concurrency per stack so we stay under the
+    30/minute ingest rate limit; polling is unbounded (read-only).
+    """
     headers = {"X-API-Key": stack.api_key}
 
-    try:
-        resp = await client.post(
-            f"{stack.base_url}/api/v1/ingest",
-            headers=headers,
-            json=payload,
-            timeout=30.0,
-        )
-        resp.raise_for_status()
-    except httpx.HTTPError as exc:
-        return TraceResult(
-            trace_id=None,
-            status="ingest_failed",
-            scores={},
-            duration_ms=None,
-            cost_usd=None,
-            total_tokens=None,
-            reasoning_summary=f"ingest error on {stack.name}: {exc}",
-            raw={},
-        )
+    async with sem:
+        try:
+            resp = await client.post(
+                f"{stack.base_url}/api/v1/ingest",
+                headers=headers,
+                json=payload,
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            return TraceResult(
+                trace_id=None,
+                status="ingest_failed",
+                scores={},
+                duration_ms=None,
+                cost_usd=None,
+                total_tokens=None,
+                reasoning_summary=f"ingest error on {stack.name}: {exc}",
+                raw={},
+            )
+        # Small gap inside the critical section so we never exceed 30/min
+        await asyncio.sleep(0.3)
 
     data = resp.json()
     trace_id = data.get("id")
@@ -270,14 +278,27 @@ def print_summary(qwen: list[TraceResult], openai: list[TraceResult]) -> None:
 
 
 async def run(
-    qwen: Stack, openai: Stack, payloads: list[dict[str, Any]], out_path: Path | None
+    qwen: Stack,
+    openai: Stack,
+    payloads: list[dict[str, Any]],
+    out_path: Path | None,
+    concurrency: int,
 ) -> None:
+    # Per-stack ingest semaphore — each limits concurrent POSTs to /ingest so
+    # we stay under the 30/minute rate limit. 4 concurrent × ~0.3s gap is
+    # comfortably under the limit while keeping wall-clock low.
+    qwen_sem = asyncio.Semaphore(concurrency)
+    openai_sem = asyncio.Semaphore(concurrency)
+
     async with httpx.AsyncClient() as client:
-        print(f"Submitting {len(payloads)} trace(s) to both stacks in parallel...")
+        print(
+            f"Submitting {len(payloads)} trace(s) to both stacks "
+            f"(concurrency={concurrency} per stack)..."
+        )
         tasks = []
         for p in payloads:
-            tasks.append(submit_and_wait(client, qwen, p))
-            tasks.append(submit_and_wait(client, openai, p))
+            tasks.append(submit_and_wait(client, qwen, p, qwen_sem))
+            tasks.append(submit_and_wait(client, openai, p, openai_sem))
         results = await asyncio.gather(*tasks)
 
     qwen_results = results[0::2]
@@ -310,6 +331,12 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--openai-url", default="http://localhost:8001")
     ap.add_argument("--openai-key", required=True, help="X-API-Key for the OpenAI stack")
     ap.add_argument("--out", type=Path, default=None, help="Optional: dump raw results to this path")
+    ap.add_argument(
+        "--concurrency",
+        type=int,
+        default=4,
+        help="Max concurrent ingests per stack (default 4; keeps us below the 30/min rate limit)",
+    )
     return ap.parse_args()
 
 
@@ -329,9 +356,10 @@ def main() -> int:
     qwen = Stack(name="qwen", base_url=args.qwen_url.rstrip("/"), api_key=args.qwen_key)
     openai = Stack(name="openai", base_url=args.openai_url.rstrip("/"), api_key=args.openai_key)
 
-    asyncio.run(run(qwen, openai, payloads, args.out))
+    asyncio.run(run(qwen, openai, payloads, args.out, args.concurrency))
     return 0
 
 
 if __name__ == "__main__":
+    sys.exit(main())
     sys.exit(main())

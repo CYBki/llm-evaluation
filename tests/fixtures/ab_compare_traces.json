@@ -1,0 +1,106 @@
+[
+  {
+    "question": "Python'da GIL nedir ve hangi sürümden itibaren opsiyonel kaldırılabiliyor?",
+    "answer": "GIL (Global Interpreter Lock), CPython yorumlayıcısında aynı anda yalnızca tek bir thread'in Python bytecode'u çalıştırmasına izin veren bir mekanizmadır. Python 3.12 sürümünden itibaren PEP 703 kapsamında GIL opsiyonel olarak devre dışı bırakılabilir hale gelmiştir. Ayrıca GIL'in kaldırılması I/O-bound işlerde de yaklaşık 5 kat performans artışı sağlamaktadır.",
+    "contexts": [
+      "The Global Interpreter Lock (GIL) is a mutex that protects access to Python objects, preventing multiple threads from executing Python bytecodes at once in the CPython interpreter.",
+      "PEP 703 was accepted in 2023. The first release to include an experimental free-threaded build is Python 3.13, released in October 2024.",
+      "Benchmarks on the free-threaded build show improvements for CPU-bound multi-threaded workloads; I/O-bound workloads generally see little to no change since they were never GIL-limited."
+    ],
+    "ground_truth": "Python 3.13 / PEP 703 free-threaded build. I/O-bound işlerde değişiklik yoktur.",
+    "metadata": {"case": "1_major_contradictions_tr", "expected_hallucination": "high"}
+  },
+  {
+    "question": "Python'da GIL nedir?",
+    "answer": "GIL (Global Interpreter Lock), CPython'da aynı anda sadece bir thread'in Python bytecode çalıştırmasına izin veren bir mutex'tir. CPU-bound multi-threaded programlarda paralellik sağlamayı engeller.",
+    "contexts": [
+      "The Global Interpreter Lock (GIL) is a mutex that protects access to Python objects, preventing multiple threads from executing Python bytecodes at once in the CPython interpreter.",
+      "This lock simplifies CPython's memory management but limits the parallelism of multi-threaded CPU-bound programs."
+    ],
+    "ground_truth": "GIL CPython'da thread'leri serileştiren bir mutex'tir.",
+    "metadata": {"case": "2_faithful_baseline_tr", "expected_hallucination": "none"}
+  },
+  {
+    "question": "İstanbul Boğazı'nın uzunluğu ve üzerindeki köprü sayısı nedir?",
+    "answer": "İstanbul Boğazı yaklaşık 31 km uzunluğundadır ve Karadeniz ile Marmara Denizi'ni bağlar. Üzerinde üç asma köprü vardır: 15 Temmuz Şehitler Köprüsü (1973), Fatih Sultan Mehmet Köprüsü (1988) ve Yavuz Sultan Selim Köprüsü (2016).",
+    "contexts": [
+      "İstanbul Boğazı yaklaşık 31 km uzunluğundadır; Karadeniz ile Marmara Denizi'ni birbirine bağlar.",
+      "Boğaz üzerinde üç asma köprü bulunur: 15 Temmuz Şehitler Köprüsü 1973'te, Fatih Sultan Mehmet Köprüsü 1988'de, Yavuz Sultan Selim Köprüsü 2016'da hizmete girmiştir."
+    ],
+    "ground_truth": "31 km, 3 köprü (1973, 1988, 2016).",
+    "metadata": {"case": "3_faithful_geography_tr", "expected_hallucination": "none"}
+  },
+  {
+    "question": "Türkiye'nin yüzölçümü ve başkenti nedir?",
+    "answer": "Türkiye'nin yüzölçümü yaklaşık 783.562 km² olup başkenti İstanbul'dur. Ülke hem Avrupa hem Asya kıtalarında topraklara sahiptir.",
+    "contexts": [
+      "Türkiye, yaklaşık 783.562 km² yüzölçümüne sahip bir Avrasya ülkesidir.",
+      "Türkiye Cumhuriyeti'nin başkenti Ankara'dır; İstanbul ise ülkenin en kalabalık şehridir."
+    ],
+    "ground_truth": "Başkent Ankara, yüzölçümü ~783.562 km².",
+    "metadata": {"case": "4_subtle_contradiction_tr", "expected_hallucination": "medium"}
+  },
+  {
+    "question": "What is the speed of light in vacuum?",
+    "answer": "The speed of light in vacuum is exactly 299,792,458 meters per second, a universal physical constant denoted by c. It was defined as an exact value in 1983 when the SI metre was redefined in terms of the speed of light.",
+    "contexts": [
+      "The speed of light in vacuum, commonly denoted c, is a universal physical constant exactly equal to 299,792,458 metres per second.",
+      "In 1983 the 17th CGPM redefined the metre in terms of the speed of light, making c exact by definition."
+    ],
+    "ground_truth": "Exactly 299,792,458 m/s (defined in 1983).",
+    "metadata": {"case": "5_faithful_science_en", "expected_hallucination": "none"}
+  },
+  {
+    "question": "Which year did the Apollo 11 mission land on the Moon, and who was the first human to set foot there?",
+    "answer": "The Apollo 11 mission landed on the Moon in July 1968 and the first human to set foot on the lunar surface was Buzz Aldrin, closely followed by Neil Armstrong. The mission was launched by NASA from the Johnson Space Center in Florida.",
+    "contexts": [
+      "Apollo 11 was the American spaceflight that first landed humans on the Moon. Commander Neil Armstrong and lunar module pilot Buzz Aldrin landed the Apollo Lunar Module Eagle on July 20, 1969.",
+      "Armstrong became the first person to step onto the lunar surface six hours and 39 minutes after landing on July 21, 1969 at 02:56 UTC; Aldrin joined him 19 minutes later.",
+      "Apollo 11 was launched by a Saturn V rocket from Kennedy Space Center on Merritt Island, Florida."
+    ],
+    "ground_truth": "1969, Neil Armstrong first; launched from Kennedy Space Center.",
+    "metadata": {"case": "6_multiple_contradictions_en", "expected_hallucination": "high"}
+  },
+  {
+    "question": "Transformer mimarisi neden RNN'lerden daha hızlı eğitilir?",
+    "answer": "Transformer mimarisi, self-attention mekanizması sayesinde bir dizideki tüm konumları paralel işleyebildiği için RNN'lere göre çok daha hızlı eğitilir. RNN'ler sıralı (sequential) doğaları gereği paralelleştirilemez. Ayrıca transformer'lar bellek kullanımı açısından RNN'lerin yaklaşık 100 katı daha verimlidir.",
+    "contexts": [
+      "Unlike recurrent networks, the Transformer relies entirely on self-attention to compute representations of its input and output without using sequence-aligned RNNs.",
+      "Transformers can process all tokens of a sequence in parallel during training, which allows much better GPU utilization compared to RNNs whose computation must proceed step by step."
+    ],
+    "ground_truth": "Self-attention ile paralel işlem; RNN'ler ardışık çalışır.",
+    "metadata": {"case": "7_unsupported_claim_tr", "expected_hallucination": "medium"}
+  },
+  {
+    "question": "PostgreSQL'de MVCC nasıl çalışır ve neden ACID uyumludur?",
+    "answer": "PostgreSQL MVCC (Multi-Version Concurrency Control) kullanır: her transaction veritabanındaki satırların kendi snapshot'ını görür ve yazma işlemleri mevcut satırları kilitlemek yerine yeni versiyonlar oluşturur.",
+    "contexts": [
+      "PostgreSQL uses a model called Multi-Version Concurrency Control (MVCC) to manage concurrent access to data.",
+      "Under MVCC, each SQL statement sees a snapshot of data (a database version) as it was some time ago, regardless of the current state of the underlying data.",
+      "The main advantage of MVCC over locking is that locks acquired for querying data do not conflict with locks acquired for writing data, so reading never blocks writing and writing never blocks reading."
+    ],
+    "ground_truth": "MVCC + snapshot isolation; ACID için ayrıca WAL ve commit protokolü.",
+    "metadata": {"case": "8_partial_answer_tr", "expected_hallucination": "low"}
+  },
+  {
+    "question": "Einstein'ın genel görelilik teorisinin ana öngörüsü nedir?",
+    "answer": "Bugün hava çok güzel, İstanbul'a gitmek için ideal bir zaman. Boğaz manzaralı kahvaltı yapmanızı tavsiye ederim.",
+    "contexts": [
+      "General relativity predicts that mass and energy warp the fabric of spacetime, and this curvature is what we experience as gravity.",
+      "Key predictions include gravitational time dilation, the bending of light near massive objects, and the existence of gravitational waves."
+    ],
+    "ground_truth": "Kütle uzay-zamanı büker; bu eğrilik yerçekimini oluşturur.",
+    "metadata": {"case": "9_off_topic_deflection_tr", "expected_flags": ["is_off_topic", "is_deflection"]}
+  },
+  {
+    "question": "What causes insulin resistance in type 2 diabetes?",
+    "answer": "Insulin resistance in type 2 diabetes is caused by impaired signaling of the insulin receptor in peripheral tissues such as muscle, liver, and adipose tissue. Chronic low-grade inflammation and excess free fatty acids from visceral adiposity play central roles. Curing type 2 diabetes is always possible with a one-week fasting regimen.",
+    "contexts": [
+      "Insulin resistance is a key feature of type 2 diabetes; it refers to reduced responsiveness of target tissues (muscle, liver, adipose) to circulating insulin.",
+      "Obesity, particularly visceral adiposity, promotes chronic low-grade inflammation and elevated free fatty acids, both of which impair insulin signaling at the receptor and post-receptor levels.",
+      "Type 2 diabetes is a chronic condition; while remission is possible with significant weight loss and lifestyle changes, there is no established one-week 'cure'."
+    ],
+    "ground_truth": "Reseptör sinyalinin bozulması, iç organ yağlanması, kronik inflamasyon; kalıcı tedavi yoktur.",
+    "metadata": {"case": "10_major_contradiction_medical_en", "expected_hallucination": "high"}
+  }
+]
