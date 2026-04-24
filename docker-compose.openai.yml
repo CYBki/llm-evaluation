@@ -31,6 +31,12 @@ services:
     working_dir: /app
     volumes:
       - ./:/app
+    env_file:
+      # IMPORTANT: forwards LLM_* / STAGE_*_MODEL / PRICE* to the container
+      # so pydantic-settings reads them from os.environ (which wins over
+      # the .env file mounted via the volume). Without this the container
+      # would read the Qwen .env from the mounted workdir.
+      - .env.openai
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/rageval
       EVALUATION_MODE: ${EVALUATION_MODE:-sync}
@@ -52,6 +58,8 @@ services:
     working_dir: /app
     volumes:
       - ./:/app
+    env_file:
+      - .env.openai
     environment:
       DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/rageval
       EVALUATION_MODE: ${EVALUATION_MODE:-sync}

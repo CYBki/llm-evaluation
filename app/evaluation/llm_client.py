@@ -384,13 +384,22 @@ class OpenAILLMClient:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
-        # Use `max_tokens` (the OpenAI-compatible standard) so non-OpenAI
-        # providers on OpenRouter (Parasail, SiliconFlow, Cerebras, ...) can
-        # also satisfy `provider.require_parameters=true`. Newer OpenAI-only
-        # models accept this too (deprecated but still honored).
+        # Param naming is backend-specific:
+        # - OpenAI's newer models (gpt-5.x, o1, ...) require
+        #   `max_completion_tokens` and reject `max_tokens` with HTTP 400.
+        # - Most other OpenAI-compatible providers (OpenRouter →
+        #   Parasail / SiliconFlow / Cerebras / DeepInfra, local vLLM, ...)
+        #   only know the classic `max_tokens` and 404/400 on the new one.
+        # Auto-detect by base URL to pick the right key without needing a
+        # dedicated config flag.
+        token_param = (
+            "max_completion_tokens"
+            if "api.openai.com" in (self.base_url or "")
+            else "max_tokens"
+        )
         payload = {
             "model": model,
-            "max_tokens": max_completion_tokens,
+            token_param: max_completion_tokens,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
