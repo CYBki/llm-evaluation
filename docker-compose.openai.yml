@@ -1,0 +1,92 @@
+# ============================================================================
+# Parallel "OpenAI" stack for A/B comparison with the Qwen (OpenRouter) stack.
+#
+# Run with a separate project name + env file so it coexists with the default
+# stack (which runs on port 8000 with the Qwen config):
+#
+#   docker compose -f docker-compose.openai.yml \
+#     -p llm-eval-openai \
+#     --env-file .env.openai \
+#     up -d
+#
+# API will be exposed on http://localhost:8001 with its own Postgres/Redis.
+# Same codebase, different LLM config supplied via .env.openai.
+# ============================================================================
+
+services:
+  migrate:
+    build: .
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/rageval
+    command: alembic upgrade head
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: .
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/rageval
+      EVALUATION_MODE: ${EVALUATION_MODE:-sync}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    command: bash scripts/start_api.sh --reload
+    ports:
+      - "8001:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/rageval
+      EVALUATION_MODE: ${EVALUATION_MODE:-sync}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    command: celery -A app.tasks.celery_app.celery_app worker --loglevel=info --concurrency=8 --pool=prefork
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: rageval
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rageval"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
