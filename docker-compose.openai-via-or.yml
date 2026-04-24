@@ -1,0 +1,99 @@
+# ============================================================================
+# Third A/B stack — OpenAI models called THROUGH OpenRouter (infra parity).
+#
+# Purpose: isolate pure model quality by removing provider/gateway differences
+# between Qwen and OpenAI. All three stacks share the same code, prompts and
+# JSON schema; only STAGE_1_MODEL / LLM_BASE_URL / LLM_API_KEY differ.
+#
+#   port 8000  Qwen   via OpenRouter         (existing)
+#   port 8001  OpenAI direct (api.openai.com) (existing)
+#   port 8002  OpenAI via OpenRouter          (this file) ← same gateway as 8000
+#
+# Run:
+#   docker compose -f docker-compose.openai-via-or.yml \
+#     -p llm-eval-openai-or \
+#     --env-file .env.openai-via-or \
+#     up -d --build
+# ============================================================================
+
+services:
+  migrate:
+    build: .
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/rageval
+    command: alembic upgrade head
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build: .
+    working_dir: /app
+    volumes:
+      - ./:/app
+    env_file:
+      - .env.openai-via-or
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/rageval
+      EVALUATION_MODE: ${EVALUATION_MODE:-sync}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    command: bash scripts/start_api.sh --reload
+    ports:
+      - "8002:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    working_dir: /app
+    volumes:
+      - ./:/app
+    env_file:
+      - .env.openai-via-or
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@db:5432/rageval
+      EVALUATION_MODE: ${EVALUATION_MODE:-sync}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    command: celery -A app.tasks.celery_app.celery_app worker --loglevel=info --concurrency=8 --pool=prefork
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: rageval
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rageval"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
