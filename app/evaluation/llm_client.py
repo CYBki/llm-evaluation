@@ -144,9 +144,21 @@ class OpenAILLMClient:
         self.api_key = settings.openai_api_key
         self.base_url = settings.openai_base_url.rstrip("/")
         self.timeout_seconds = settings.openai_timeout_seconds
+        # Embedding endpoint (may differ from chat endpoint, e.g. when chat
+        # is routed through OpenRouter which does not serve embeddings).
+        self.embedding_base_url = (
+            settings.openai_embedding_base_url or settings.openai_base_url
+        ).rstrip("/")
+        self.embedding_api_key = (
+            settings.openai_embedding_api_key or settings.openai_api_key
+        )
         # Per-instance token accumulator
         self._accumulated_prompt_tokens = 0
         self._accumulated_completion_tokens = 0
+
+    @property
+    def _is_openrouter(self) -> bool:
+        return "openrouter.ai" in self.base_url
 
     @property
     def is_enabled(self) -> bool:
@@ -328,12 +340,15 @@ class OpenAILLMClient:
         model: str = "text-embedding-3-small",
     ) -> list[list[float]]:
         """Return embedding vectors for each text using OpenAI Embeddings API."""
-        if not self.api_key:
-            raise LLMClientError("OPENAI_API_KEY not configured")
+        if not self.embedding_api_key:
+            raise LLMClientError(
+                "No embedding API key configured "
+                "(set OPENAI_EMBEDDING_API_KEY or OPENAI_API_KEY)"
+            )
 
-        url = f"{self.base_url}/embeddings"
+        url = f"{self.embedding_base_url}/embeddings"
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {self.embedding_api_key}",
             "Content-Type": "application/json",
         }
         payload = {"model": model, "input": texts}
@@ -383,6 +398,22 @@ class OpenAILLMClient:
             }
         elif response_format_json:
             payload["response_format"] = {"type": "json_object"}
+
+        # OpenRouter: pin to providers that support response_format/json_schema.
+        # Ignored by native OpenAI API (would 400); only attached when base_url
+        # is OpenRouter.
+        if self._is_openrouter:
+            order = [
+                p.strip()
+                for p in settings.openrouter_provider_order.split(",")
+                if p.strip()
+            ]
+            provider_cfg: dict[str, Any] = {
+                "require_parameters": settings.openrouter_require_parameters,
+            }
+            if order:
+                provider_cfg["order"] = order
+            payload["provider"] = provider_cfg
 
         resp = await self._request_with_retry(
             url, headers, payload, label="OpenAI Chat"
