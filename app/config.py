@@ -35,8 +35,10 @@ class Settings(BaseSettings):
         ),
     )
     # OpenRouter provider routing (used only when llm_base_url points at
-    # openrouter.ai). Comma-separated, ordered preference list.
-    openrouter_provider_order: str = "fireworks,together,deepinfra"
+    # openrouter.ai). Comma-separated, ordered preference list. Leave empty
+    # to let OpenRouter pick any provider that supports the requested
+    # parameters (controlled via openrouter_require_parameters).
+    openrouter_provider_order: str = ""
     openrouter_require_parameters: bool = True
     stage_1_model: str = "gpt-5.2"
     stage_2_model: str = "gpt-4o-mini"

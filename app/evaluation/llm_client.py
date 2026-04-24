@@ -354,7 +354,7 @@ class OpenAILLMClient:
         payload = {"model": model, "input": texts}
 
         resp = await self._request_with_retry(
-            url, headers, payload, label="OpenAI Embeddings"
+            url, headers, payload, label="LLM Embeddings"
         )
 
         data = resp.json()
@@ -363,7 +363,7 @@ class OpenAILLMClient:
             sorted_data = sorted(data["data"], key=lambda x: x["index"])
             return [item["embedding"] for item in sorted_data]
         except (KeyError, IndexError, TypeError) as exc:
-            raise LLMClientError("Invalid OpenAI Embeddings response format") from exc
+            raise LLMClientError("Invalid LLM Embeddings response format") from exc
 
     async def chat_completion(
         self,
@@ -417,7 +417,7 @@ class OpenAILLMClient:
             payload["provider"] = provider_cfg
 
         resp = await self._request_with_retry(
-            url, headers, payload, label="OpenAI Chat"
+            url, headers, payload, label="LLM Chat"
         )
 
         data = resp.json()
@@ -426,10 +426,10 @@ class OpenAILLMClient:
             content = message.get("content")
             refusal = message.get("refusal")
         except (KeyError, IndexError, TypeError) as exc:
-            raise LLMClientError("Invalid OpenAI response format") from exc
+            raise LLMClientError("Invalid LLM response format") from exc
 
         if refusal:
-            raise LLMClientError(f"OpenAI refused the request: {refusal}")
+            raise LLMClientError(f"LLM refused the request: {refusal}")
 
         # Handle content=None (can happen with some structured output responses)
         if content is None:
@@ -439,7 +439,7 @@ class OpenAILLMClient:
         finish_reason = data.get("choices", [{}])[0].get("finish_reason", "")
         if finish_reason == "length":
             logger.warning(
-                "OpenAI response truncated (finish_reason=length) for model=%s",
+                "LLM response truncated (finish_reason=length) for model=%s",
                 payload.get("model", "unknown"),
             )
 
