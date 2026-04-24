@@ -384,9 +384,13 @@ class OpenAILLMClient:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        # Use `max_tokens` (the OpenAI-compatible standard) so non-OpenAI
+        # providers on OpenRouter (Parasail, SiliconFlow, Cerebras, ...) can
+        # also satisfy `provider.require_parameters=true`. Newer OpenAI-only
+        # models accept this too (deprecated but still honored).
         payload = {
             "model": model,
-            "max_completion_tokens": max_completion_tokens,
+            "max_tokens": max_completion_tokens,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
