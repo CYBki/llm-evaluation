@@ -141,16 +141,16 @@ class OpenAILLMClient:
     _circuit_breaker: _CircuitBreaker = _CircuitBreaker()
 
     def __init__(self) -> None:
-        self.api_key = settings.openai_api_key
-        self.base_url = settings.openai_base_url.rstrip("/")
-        self.timeout_seconds = settings.openai_timeout_seconds
+        self.api_key = settings.llm_api_key
+        self.base_url = settings.llm_base_url.rstrip("/")
+        self.timeout_seconds = settings.llm_timeout_seconds
         # Embedding endpoint (may differ from chat endpoint, e.g. when chat
         # is routed through OpenRouter which does not serve embeddings).
         self.embedding_base_url = (
-            settings.openai_embedding_base_url or settings.openai_base_url
+            settings.embedding_base_url or settings.llm_base_url
         ).rstrip("/")
         self.embedding_api_key = (
-            settings.openai_embedding_api_key or settings.openai_api_key
+            settings.embedding_api_key or settings.llm_api_key
         )
         # Per-instance token accumulator
         self._accumulated_prompt_tokens = 0
@@ -189,7 +189,7 @@ class OpenAILLMClient:
                 del cls._clients_by_loop[k]
 
             client = httpx.AsyncClient(
-                timeout=settings.openai_timeout_seconds,
+                timeout=settings.llm_timeout_seconds,
                 limits=httpx.Limits(
                     max_connections=20,
                     max_keepalive_connections=10,
@@ -343,7 +343,7 @@ class OpenAILLMClient:
         if not self.embedding_api_key:
             raise LLMClientError(
                 "No embedding API key configured "
-                "(set OPENAI_EMBEDDING_API_KEY or OPENAI_API_KEY)"
+                "(set EMBEDDING_API_KEY or LLM_API_KEY)"
             )
 
         url = f"{self.embedding_base_url}/embeddings"
@@ -376,9 +376,10 @@ class OpenAILLMClient:
         json_schema: dict | None = None,
     ) -> LLMResponse:
         if not self.api_key:
-            raise LLMClientError("OPENAI_API_KEY not configured")
+            raise LLMClientError("LLM_API_KEY not configured")
 
         url = f"{self.base_url}/chat/completions"
+
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",

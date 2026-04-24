@@ -1,18 +1,40 @@
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     app_name: str = "RAG Eval API"
     database_url: str  # REQUIRED — no default, must be set via env/`.env`
-    openai_api_key: str | None = None
-    openai_base_url: str = "https://api.openai.com/v1"
-    openai_timeout_seconds: float = 120.0
-    # Embedding endpoint can be pinned to OpenAI even when chat uses OpenRouter
-    # (OpenRouter does not offer embeddings). Defaults fall back to the
-    # OpenAI-compatible endpoint above when unset.
-    openai_embedding_base_url: str | None = None
-    openai_embedding_api_key: str | None = None
-    # OpenRouter provider routing (used only when openai_base_url points at
+    # ── Chat LLM (OpenAI-compatible endpoint: OpenAI / OpenRouter / Azure / vLLM) ─
+    # Backward-compat: OPENAI_API_KEY / OPENAI_BASE_URL env names still work.
+    llm_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("LLM_API_KEY", "OPENAI_API_KEY"),
+    )
+    llm_base_url: str = Field(
+        default="https://openrouter.ai/api/v1",
+        validation_alias=AliasChoices("LLM_BASE_URL", "OPENAI_BASE_URL"),
+    )
+    llm_timeout_seconds: float = Field(
+        default=120.0,
+        validation_alias=AliasChoices("LLM_TIMEOUT_SECONDS", "OPENAI_TIMEOUT_SECONDS"),
+    )
+    # Embedding endpoint (optional, falls back to llm_base_url / llm_api_key).
+    # Use this when chat is routed via OpenRouter (no embeddings) but you still
+    # want embeddings from OpenAI.
+    embedding_base_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "EMBEDDING_BASE_URL", "OPENAI_EMBEDDING_BASE_URL"
+        ),
+    )
+    embedding_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "EMBEDDING_API_KEY", "OPENAI_EMBEDDING_API_KEY"
+        ),
+    )
+    # OpenRouter provider routing (used only when llm_base_url points at
     # openrouter.ai). Comma-separated, ordered preference list.
     openrouter_provider_order: str = "fireworks,together,deepinfra"
     openrouter_require_parameters: bool = True

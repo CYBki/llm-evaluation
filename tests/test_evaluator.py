@@ -395,5 +395,5 @@ class TestEvaluateTraceWithFakeClients:
         assert result["raw_response"]["skipped"] is True
         assert (
             result["reasoning_summary"]
-            == "OPENAI_API_KEY not configured; evaluation skipped."
+            == "LLM_API_KEY not configured; evaluation skipped."
         )

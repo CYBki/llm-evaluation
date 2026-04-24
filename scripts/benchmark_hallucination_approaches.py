@@ -38,8 +38,11 @@ load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 # ── Config ──────────────────────────────────────────────────────────────
 
-API_KEY = os.environ.get("OPENAI_API_KEY", "")
-BASE_URL = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+API_KEY = os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY", "")
+BASE_URL = (
+    os.environ.get("LLM_BASE_URL")
+    or os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+).rstrip("/")
 MODEL = os.environ.get("RAG_METRICS_MODEL", "gpt-4o-mini")
 TIMEOUT = 120.0
 
@@ -394,7 +397,7 @@ class CaseResult:
 
 async def run_benchmark(repeats: int, case_indices: list[int] | None) -> None:
     if not API_KEY:
-        print("ERROR: OPENAI_API_KEY ortam değişkeni ayarlanmamış.")
+        print("ERROR: LLM_API_KEY (veya OPENAI_API_KEY) ortam değişkeni ayarlanmamış.")
         sys.exit(1)
 
     cases = TEST_CASES

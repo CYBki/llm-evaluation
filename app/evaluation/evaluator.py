@@ -392,8 +392,8 @@ async def evaluate_trace(
 
     if not client.is_enabled:
         return _build_empty_result(
-            reasoning_summary="OPENAI_API_KEY not configured; evaluation skipped.",
-            raw_response={"skipped": True, "reason": "missing_openai_api_key"},
+            reasoning_summary="LLM_API_KEY not configured; evaluation skipped.",
+            raw_response={"skipped": True, "reason": "missing_llm_api_key"},
         )
 
     try:
