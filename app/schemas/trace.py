@@ -76,6 +76,8 @@ class EvaluationResponse(BaseModel):
     details: DetailsResponse
     evaluation_commentary: str | None = None
     evaluation_duration_ms: int | None = None
+    cost_usd: float | None = None
+    total_tokens: int | None = None
 
 
 class EvaluationDetailResponse(EvaluationResponse):
@@ -86,6 +88,8 @@ class EvaluationDetailResponse(EvaluationResponse):
     model_used: str | None = None
     prompt_version: str | None = None
     rubric_version: str | None = None
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
 
 
 class StepEvaluationResponse(BaseModel):
