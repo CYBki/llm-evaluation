@@ -4,24 +4,50 @@ build-backend = "hatchling.build"
 
 [project]
 name = "rageval-ai"
-version = "0.2.1"
-description = "Standalone RAG evaluation library — run LLM-as-judge evaluation locally or via self-hosted server"
+version = "0.2.2"
+description = "RAG evaluation library — LLM-as-judge for hallucination detection, faithfulness, answer relevancy. Local or self-hosted. Alternative to ragas."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
     {email = "syorgun891@gmail.com"},
 ]
-keywords = ["rag", "evaluation", "llm", "ai", "hallucination", "faithfulness"]
+keywords = [
+    "rag",
+    "rag-evaluation",
+    "retrieval-augmented-generation",
+    "llm",
+    "llm-evaluation",
+    "llm-as-judge",
+    "evaluation",
+    "hallucination",
+    "hallucination-detection",
+    "faithfulness",
+    "answer-relevancy",
+    "context-precision",
+    "context-recall",
+    "ai",
+    "openai",
+    "gpt",
+    "ragas",
+    "benchmark",
+    "nlp",
+    "langchain",
+]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
 ]
 dependencies = [
     "httpx>=0.24.0",

@@ -15,7 +15,7 @@ Two modes:
     trace = client.get_trace(result["id"])
 """
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 from rageval_sdk._config import EvalConfig
 from rageval_sdk._engine import RagEvaluator
