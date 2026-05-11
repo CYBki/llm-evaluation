@@ -22,7 +22,7 @@ Automatically evaluate RAG (Retrieval-Augmented Generation) and multi-agent syst
 
 ```bash
 # Clone repository
-git clone https://github.com/SKYMOD-Team/llm-evaluation.git
+git clone https://github.com/CYBki/llm-evaluation.git
 cd llm-evaluation
 
 # Start development environment
@@ -392,14 +392,14 @@ docker-compose -f docker-compose.yml -f docker-compose.test.yml down
 
 ## 📝 License
 
-This project is proprietary software owned by SKYMOD Team.
+MIT License
 
 ---
 
 ## 🆘 Support
 
 For issues and questions:
-- GitHub Issues: [Create an issue](https://github.com/SKYMOD-Team/llm-evaluation/issues)
+- GitHub Issues: [Create an issue](https://github.com/CYBki/llm-evaluation/issues)
 - Documentation: [SYSTEM_DOCUMENTATION.md](SYSTEM_DOCUMENTATION.md)
 
 ---
@@ -416,4 +416,4 @@ For issues and questions:
 
 ---
 
-**Made with ❤️ by SKYMOD Team**
+**Made with ❤️**
